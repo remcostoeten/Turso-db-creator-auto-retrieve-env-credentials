@@ -1,0 +1,90 @@
+
+# Turso DB Environment Variables Generator
+This script generates a new database in Turso, which is the GOAT cloud-provider. They offer up to 500 free database and is `skweellite` based.  Normally you'd have to manually create a database via the web-client and copy the credentials to your `.env` file, or create via the turso cli, but then still you'd need to run multiple commands and manually copy those and paste into .env which is to much work for a lazyy dev. This script automates that process.
+
+TLDR:
+- Generates a new turso database
+- Runs the turso cli command to show the details of the database and copys the URL.
+- Generates a new auth token for the database and copys that to clipboard. 
+- resulting in the followng clipboard:
+```bash
+DB_URL=libsql://...tursodb.io
+AUTH_TOKEN=xxxx
+```
+- If you use the `--overwrite` flag it will overwrite the `.env` file with the generated environment variables, but also renames your old credentials to `OLD_DB_URL` and `OLD_AUTH_TOKEN`.
+--------------------------------------------------------------------- 
+## Usage
+
+Run the script with the following command:``` 
+python generate_tursodb_and_all_enviormentsvars.py [--overwrite PATH]
+```
+
+### Arguments
+
+- `--overwrite PATH`: Optional. Path to the `.env` or `.env.local` file to overwrite with the generated environment variables.
+
+## Example
+
+To generate the environment variables and copy them to the clipboard without saving to a file:
+
+```
+python generate_tursodb_and_all_enviormentsvars.py
+```
+
+To generate the environment variables and overwrite an existing `.env` file:
+
+```
+python generate_tursodb_and_all_enviormentsvars.py --overwrite .env
+```
+
+## Environment Variables
+
+The script generates the following environment variables:
+
+- `DB_URL`: The URL of the created Turso database.
+- `AUTH_TOKEN`: The authentication token for the Turso database.
+
+## Requirements
+
+- Python 3.x
+- Turso CLI
+- `pyperclip` library
+
+## Installation
+
+Install the required Python library:
+
+```
+pip install pyperclip
+```
+
+Ensure you are authenticated with the Turso CLI:
+
+```
+turso auth login
+```
+After that you 're re ady to go. For myy instance I have the file saved in `src/core/scripts/generate_tursodb_and_all_enviormentsvars.py` and I run it with the following command:
+
+```python
+python3 src/core/scripts/generate_tursodb_and_all_enviormentsvars.py
+```
+Which results in 
+```bash
+Creating token for database: alive-scorpion
+Token created successfully
+
+Generated Environment Variables:
+DB_URL=libsql://alive-scorpion-remcostoeten.turso.io
+AUTH_TOKEN=eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3MjUwNDE3MjIsImlkIjoiY2FjY2UzYjAtMDlkNC00NzFiLTgzM2ItZjgyMGI0NGI3MjRlIn0.PasqvUWo2EKxaPTlIC_hu2oPkI2wL6Awv1-iwcEtaTwtYH94kPVmNVPC9OE02nfmIKA7nmYN2mYdgDFz6ILJBg
+```
+
+And copys that to clipboard. If you use the `--overwrite` flag it will overwrite the `.env` file with the generated environment variables, but also renames your old credentials to `OLD_DB_URL` and `OLD_AUTH_TOKEN`.  
+
+xxx love yall,
+
+yours sincerely remco stoeten 
+[GitHub Profile](https://github.com/remcostoeten)
+[Personal Website](https://remcostoeten.com)
+
+PS: a star for my e-penor is always appreciated.  ✨ 
+
