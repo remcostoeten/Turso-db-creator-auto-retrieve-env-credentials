@@ -10,8 +10,8 @@ from datetime import datetime
 from pathlib import Path
 
 # Script metadata (automatically updated by pre-commit hook)
-SCRIPT_VERSION = "1.00"
-LAST_UPDATED_TIMESTAMP = "2025-05-31 15:55:31 CEST"
+SCRIPT_VERSION = "1.01"
+LAST_UPDATED_TIMESTAMP = "2025-05-31 16:11:26 CEST"
 
 # Color codes for terminal output
 class Colors:
