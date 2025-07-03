@@ -10,8 +10,8 @@ from datetime import datetime
 from pathlib import Path
 
 # Script metadata (automatically updated by pre-commit hook)
-SCRIPT_VERSION = "1.01"
-LAST_UPDATED_TIMESTAMP = "2025-05-31 16:11:26 CEST"
+SCRIPT_VERSION = "1.1"
+LAST_UPDATED_TIMESTAMP = "2025-07-03 16:39:47 UTC"
 
 # Color codes for terminal output
 class Colors:
@@ -33,20 +33,21 @@ class Colors:
 # Define a standard width for the content of all boxes
 CONTENT_WIDTH = 60
 STATE_FILE = Path.home() / ".turso_gen_state.json"
+CONFIG_FILE = Path.home() / ".turso_gen_config.json"
 
 def print_ascii_header():
     """Print a beautiful ASCII header with version and update info."""
     # Prepare the version and timestamp line
     version_text = f"Version: {SCRIPT_VERSION}"
     last_updated_text = f"Last Updated: {LAST_UPDATED_TIMESTAMP}"
-    
+
     # Combine with colors for display, but keep plain text for length calculation
     info_line_plain = f"{version_text}  {last_updated_text}"
     info_line_colored = f"{Colors.BOLD}{Colors.WHITE}{version_text}{Colors.ENDC}  {Colors.GRAY}{last_updated_text}{Colors.ENDC}"
 
     # Calculate visible length (without ANSI codes)
     visible_length = len(info_line_plain)
-    
+
     # Calculate padding needed for centering
     if visible_length < CONTENT_WIDTH:
         total_padding = CONTENT_WIDTH - visible_length
@@ -60,7 +61,7 @@ def print_ascii_header():
         # For now, we'll let it overflow if it's drastically longer than CONTENT_WIDTH.
 
     centered_info_line = f"{' ' * left_padding}{info_line_colored}{' ' * right_padding}"
-    
+
     # If the centered_info_line (with padding but without outer box colors) is longer than CONTENT_WIDTH due to color codes,
     # we might need to adjust. However, the primary goal is to center the *visible* text.
     # The re.sub method is more robust for calculating visible length if colors were within version_text etc.
@@ -110,7 +111,7 @@ def print_section_divider(title):
     print(f"║{Colors.BOLD}{Colors.WHITE}{title.center(CONTENT_WIDTH)}{Colors.ENDC}{Colors.PURPLE}║")
     print(f"╚{divider}╝{Colors.ENDC}")
 
-def print_env_vars_box(db_url, auth_token, db_name):
+def print_env_vars_box(DATABASE_URL, auth_token, db_name):
     """Print environment variables in a beautiful, perfectly aligned box."""
     print_section_divider("🔐 GENERATED CREDENTIALS")
 
@@ -123,11 +124,11 @@ def print_env_vars_box(db_url, auth_token, db_name):
     line_title = create_padded_line(f"      {Colors.BOLD}{Colors.WHITE}DATABASE CREDENTIALS", CONTENT_WIDTH)
     line_db_name = create_padded_line(f" {Colors.BOLD}{Colors.WHITE}Database Name: {Colors.CYAN}{db_name}", CONTENT_WIDTH)
     line_created_at = create_padded_line(f" {Colors.BOLD}{Colors.WHITE}Created At:    {Colors.GRAY}{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", CONTENT_WIDTH)
-    
-    # Ensure db_url and truncated_token are not longer than CONTENT_WIDTH - prefix_length
-    db_url_display = db_url
-    if len(db_url) > CONTENT_WIDTH - 1: # -1 for the leading space
-        db_url_display = db_url[:CONTENT_WIDTH - 4] + "..."
+
+    # Ensure DATABASE_URL and truncated_token are not longer than CONTENT_WIDTH - prefix_length
+    DATABASE_URL_display = DATABASE_URL
+    if len(DATABASE_URL) > CONTENT_WIDTH - 1: # -1 for the leading space
+        DATABASE_URL_display = DATABASE_URL[:CONTENT_WIDTH - 4] + "..."
 
     truncated_token = auth_token
     if len(auth_token) > 30: # Keep original truncation logic for token
@@ -136,7 +137,7 @@ def print_env_vars_box(db_url, auth_token, db_name):
         truncated_token = truncated_token[:CONTENT_WIDTH-4] + "..."
 
 
-    line_db_url_val = create_padded_line(f" {Colors.YELLOW}{db_url_display}", CONTENT_WIDTH)
+    line_DATABASE_URL_val = create_padded_line(f" {Colors.YELLOW}{DATABASE_URL_display}", CONTENT_WIDTH)
     line_auth_token_val = create_padded_line(f" {Colors.YELLOW}{truncated_token}", CONTENT_WIDTH)
 
 
@@ -147,10 +148,10 @@ def print_env_vars_box(db_url, auth_token, db_name):
 {Colors.BOLD}{Colors.WHITE}│{line_db_name}│{Colors.ENDC}
 {Colors.BOLD}{Colors.WHITE}│{line_created_at}│{Colors.ENDC}
 {Colors.BOLD}{Colors.OKGREEN}├{'─' * CONTENT_WIDTH}┤{Colors.ENDC}
-{Colors.BOLD}{Colors.WHITE}│ DB_URL: {' ' * (CONTENT_WIDTH - len("DB_URL: "))}│{Colors.ENDC}
-{Colors.BOLD}{Colors.WHITE}│{line_db_url_val}│{Colors.ENDC}
+{Colors.BOLD}{Colors.WHITE}│ DATABASE_URL: {' ' * (CONTENT_WIDTH - len("DATABASE_URL: "))}│{Colors.ENDC}
+{Colors.BOLD}{Colors.WHITE}│{line_DATABASE_URL_val}│{Colors.ENDC}
 {Colors.BOLD}{Colors.WHITE}│{' ' * CONTENT_WIDTH}│{Colors.ENDC}
-{Colors.BOLD}{Colors.WHITE}│ AUTH_TOKEN: {' ' * (CONTENT_WIDTH - len("AUTH_TOKEN: "))}│{Colors.ENDC}
+{Colors.BOLD}{Colors.WHITE}│ TURSO_AUTH_TOKEN: {' ' * (CONTENT_WIDTH - len("TURSO_AUTH_TOKEN: "))}│{Colors.ENDC}
 {Colors.BOLD}{Colors.WHITE}│{line_auth_token_val}│{Colors.ENDC}
 {Colors.BOLD}{Colors.OKGREEN}└{'─' * CONTENT_WIDTH}┘{Colors.ENDC}
 """)
@@ -161,7 +162,7 @@ def print_footer(db_name):
     line1_raw = "🎉 SUCCESS! Your Turso database is ready to use! 🎉"
     line2_raw = "📋 Credentials copied to clipboard"
     line3_raw = "🔧 Ready to paste into your .env file"
-    line4_raw = "Much love xxx remcostoeten 💖" 
+    line4_raw = "Much love xxx remcostoeten 💖"
 
     line1 = f"{Colors.BOLD}{Colors.OKGREEN}{line1_raw}{Colors.ENDC}".center(CONTENT_WIDTH + len(f"{Colors.BOLD}{Colors.OKGREEN}{Colors.ENDC}") - len(line1_raw))
     line2 = f"{Colors.BOLD}{Colors.CYAN}{line2_raw}{Colors.ENDC}".center(CONTENT_WIDTH + len(f"{Colors.BOLD}{Colors.CYAN}{Colors.ENDC}") - len(line2_raw))
@@ -180,16 +181,16 @@ def print_footer(db_name):
     # Line 5b: The command itself
     indent = "  " # Indentation for the command line
     script_name = os.path.basename(sys.argv[0])
-    
+
     cmd_part1_plain = f"python {script_name}"
     cmd_part1_colored = f"{Colors.BOLD}{Colors.WHITE}{cmd_part1_plain}{Colors.ENDC}" # Command in bold white
-    
+
     cmd_part2_plain = " --delete-generation"
     cmd_part2_colored = f"{Colors.FAIL}{cmd_part2_plain}{Colors.ENDC}" # Flag in fail color
 
     text_5b_plain_for_padding = f"{indent}{cmd_part1_plain}{cmd_part2_plain}" # Full plain text for padding
     text_5b_content_colored = f"{indent}{cmd_part1_colored}{cmd_part2_colored}" # Full colored command
-    
+
     padding_5b = CONTENT_WIDTH - len(text_5b_plain_for_padding) # Use plain length for padding
     # Construct the full content for line 5b
     line5b_for_box = f"{text_5b_content_colored}{' ' * max(0, padding_5b)}{Colors.PURPLE}"
@@ -202,8 +203,8 @@ def print_footer(db_name):
 ║{line2}║
 ║{line3}║
 ║{' ' * CONTENT_WIDTH}║
-║{line5a_for_box}║ 
-║{line5b_for_box}║ 
+║{line5a_for_box}║
+║{line5b_for_box}║
 ║{' ' * CONTENT_WIDTH}║
 ║{line4}║
 ╚{'═' * CONTENT_WIDTH}╝{Colors.ENDC}
@@ -236,13 +237,200 @@ def read_last_generated_db():
         # STATE_FILE.unlink(missing_ok=True)
         return None
 
+def load_config():
+    """Load configuration from the config file."""
+    default_config = {
+        "prompts": {
+            "delete_generation": True,
+            "open_turso_web": True,
+            "paste_to_env": True
+        },
+        "env_file": {
+            "default_path": ".env",
+            "default_env_dir": "./"
+        }
+    }
+    
+    if not CONFIG_FILE.exists():
+        return default_config
+    
+    try:
+        with open(CONFIG_FILE, "r") as f:
+            config = json.load(f)
+        # Merge with defaults to ensure all keys exist
+        merged_config = default_config.copy()
+        merged_config.update(config)
+        return merged_config
+    except (json.JSONDecodeError, IOError) as e:
+        print_warning(f"Could not read config file: {e}")
+        return default_config
+
+def save_config(config):
+    """Save configuration to the config file."""
+    try:
+        with open(CONFIG_FILE, "w") as f:
+            json.dump(config, f, indent=2)
+        print_success("Configuration saved successfully!")
+    except IOError as e:
+        print_error(f"Could not save config file: {e}")
+
+def configure_script():
+    """Interactive configuration of the script."""
+    print_section_divider("⚙️ SCRIPT CONFIGURATION")
+    
+    config = load_config()
+    
+    print_info("Configure post-completion prompts:")
+    print(f"  1. Delete generation prompt: {Colors.CYAN}{'Enabled' if config['prompts']['delete_generation'] else 'Disabled'}{Colors.ENDC}")
+    print(f"  2. Open Turso shell prompt: {Colors.CYAN}{'Enabled' if config['prompts']['open_turso_web'] else 'Disabled'}{Colors.ENDC}")
+    print(f"  3. Paste to .env prompt: {Colors.CYAN}{'Enabled' if config['prompts']['paste_to_env'] else 'Disabled'}{Colors.ENDC}")
+    print(f"  4. Default .env path: {Colors.CYAN}{config['env_file']['default_path']}{Colors.ENDC}")
+    print(f"  5. Default .env directory: {Colors.CYAN}{config['env_file']['default_env_dir']}{Colors.ENDC}")
+    
+    print("\nEnter the number to toggle/change, or press Enter to finish:")
+    
+    while True:
+        try:
+            choice = input(f"{Colors.BOLD}{Colors.YELLOW}Choice (1-5 or Enter): {Colors.ENDC}").strip()
+            
+            if not choice:
+                break
+            
+            choice = int(choice)
+            
+            if choice == 1:
+                config['prompts']['delete_generation'] = not config['prompts']['delete_generation']
+                status = "Enabled" if config['prompts']['delete_generation'] else "Disabled"
+                print(f"Delete generation prompt: {Colors.CYAN}{status}{Colors.ENDC}")
+            elif choice == 2:
+                config['prompts']['open_turso_web'] = not config['prompts']['open_turso_web']
+                status = "Enabled" if config['prompts']['open_turso_web'] else "Disabled"
+                print(f"Open Turso shell prompt: {Colors.CYAN}{status}{Colors.ENDC}")
+            elif choice == 3:
+                config['prompts']['paste_to_env'] = not config['prompts']['paste_to_env']
+                status = "Enabled" if config['prompts']['paste_to_env'] else "Disabled"
+                print(f"Paste to .env prompt: {Colors.CYAN}{status}{Colors.ENDC}")
+            elif choice == 4:
+                new_path = input(f"Enter new default .env filename [{config['env_file']['default_path']}]: ").strip()
+                if new_path:
+                    config['env_file']['default_path'] = new_path
+                    print(f"Default .env path set to: {Colors.CYAN}{new_path}{Colors.ENDC}")
+            elif choice == 5:
+                new_dir = input(f"Enter new default .env directory [{config['env_file']['default_env_dir']}]: ").strip()
+                if new_dir:
+                    config['env_file']['default_env_dir'] = new_dir
+                    print(f"Default .env directory set to: {Colors.CYAN}{new_dir}{Colors.ENDC}")
+            else:
+                print_warning("Invalid choice. Please enter 1-5.")
+                
+        except ValueError:
+            print_warning("Invalid input. Please enter a number 1-5.")
+        except KeyboardInterrupt:
+            print_error("\nConfiguration cancelled.")
+            return
+    
+    save_config(config)
+
+
+def post_completion_prompts(db_name, DATABASE_URL, auth_token):
+    """Handle post-completion prompts based on configuration."""
+    config = load_config()
+    
+    print_section_divider("🎯 POST-COMPLETION OPTIONS")
+    
+    # Delete generation prompt
+    if config['prompts']['delete_generation']:
+        try:
+            delete_choice = input(f"{Colors.BOLD}{Colors.YELLOW}Delete this generation? (y/N): {Colors.ENDC}").strip().lower()
+            if delete_choice == 'y':
+                if delete_database(db_name):
+                    print_success("Database deleted successfully!")
+                    try:
+                        STATE_FILE.unlink(missing_ok=True)
+                        print_info("State file cleared.")
+                    except OSError as e:
+                        print_warning(f"Could not remove state file: {e}")
+                    return  # Exit early if database was deleted
+        except KeyboardInterrupt:
+            print_info("\nSkipping delete prompt.")
+    
+    # Open Turso shell prompt
+    if config['prompts']['open_turso_web']:
+        try:
+            shell_choice = input(f"{Colors.BOLD}{Colors.YELLOW}Open database shell connection? (y/N): {Colors.ENDC}").strip().lower()
+            if shell_choice == 'y':
+                try:
+                    print_success("Opening Turso database shell...")
+                    print_info(f"Connecting to database: {Colors.CYAN}{db_name}{Colors.ENDC}")
+                    print_info("Type '.quit' or '.exit' to close the shell.")
+                    print("\n" + "="*60)
+                    
+                    # Use subprocess.call for interactive shell
+                    import subprocess
+                    result = subprocess.call(["turso", "db", "shell", db_name])
+                    
+                    print("\n" + "="*60)
+                    if result == 0:
+                        print_success("Shell session completed.")
+                    else:
+                        print_warning("Shell session ended with non-zero exit code.")
+                        
+                except Exception as e:
+                    print_error(f"Could not open database shell: {e}")
+                    print_info(f"Manual command: {Colors.CYAN}turso db shell {db_name}{Colors.ENDC}")
+        except KeyboardInterrupt:
+            print_info("\nSkipping shell prompt.")
+    
+    # Paste to .env prompt
+    if config['prompts']['paste_to_env']:
+        try:
+            env_choice = input(f"{Colors.BOLD}{Colors.YELLOW}Paste credentials to .env file? (y/N): {Colors.ENDC}").strip().lower()
+            if env_choice == 'y':
+                # Get the default path from config
+                default_env_path = config['env_file']['default_path']
+                default_env_dir = config['env_file']['default_env_dir']
+                
+                suggested_path = f"{default_env_dir.rstrip('/')}/{default_env_path}"
+                env_path = input(f"{Colors.BOLD}{Colors.YELLOW}Enter .env file path [{suggested_path}]: {Colors.ENDC}").strip()
+                
+                if not env_path:
+                    env_path = suggested_path
+                
+                try:
+                    env_file_path = Path(env_path)
+                    env_file_path.parent.mkdir(parents=True, exist_ok=True)
+                    
+                    # Check if file exists and ask for overwrite
+                    if env_file_path.exists():
+                        overwrite = input(f"{Colors.BOLD}{Colors.YELLOW}File exists. Append to existing file? (Y/n): {Colors.ENDC}").strip().lower()
+                        mode = 'a' if overwrite != 'n' else 'w'
+                    else:
+                        mode = 'w'
+                    
+                    with open(env_file_path, mode) as f:
+                        if mode == 'a':
+                            f.write("\n\n# Turso Credentials (added by script)\n")
+                        else:
+                            f.write("# Turso Credentials (generated by script)\n")
+                        f.write(f"# Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                        f.write(f"DATABASE_URL={DATABASE_URL}\n")
+                        f.write(f"TURSO_AUTH_TOKEN={auth_token}\n")
+                    
+                    print_success(f"Credentials {'appended to' if mode == 'a' else 'written to'} {Colors.CYAN}{env_file_path}{Colors.ENDC}")
+                    
+                except IOError as e:
+                    print_error(f"Could not write to {env_path}: {e}")
+                    
+        except KeyboardInterrupt:
+            print_info("\nSkipping .env prompt.")
+
 def delete_database(db_name):
     """Deletes a Turso database."""
     print_info(f"Attempting to delete database: {Colors.CYAN}{db_name}{Colors.ENDC}")
     command = f"turso db destroy {db_name} --yes" # --yes confirms deletion
-    
+
     output, error, code = run_command(command, timeout=60)
-    
+
     # Turso CLI might change its output format slightly.
     # Check for common success indicators.
     if code == 0 and (f"Destroyed database {db_name}" in output or "successfully deleted" in output.lower()):
@@ -263,7 +451,7 @@ def delete_last_generated_db():
         print_error("No previously generated database found to delete.")
         print_info(f"State file ({STATE_FILE}) not found, empty, or unreadable.")
         sys.exit(1)
-    
+
     if delete_database(db_name):
         try:
             STATE_FILE.unlink() # Remove state file after successful deletion
@@ -287,7 +475,7 @@ def interactive_delete():
     try:
         data = json.loads(output)
         # The key might be 'databases' or 'dbs' depending on CLI version or if it's empty
-        databases = data.get("databases", data.get("dbs", [])) 
+        databases = data.get("databases", data.get("dbs", []))
     except (json.JSONDecodeError, KeyError) as e:
         print_error("Could not parse the list of databases.")
         print_info(f"Received output: {output}")
@@ -308,7 +496,7 @@ def interactive_delete():
         db_region = db_info.get("Region", db_info.get("region", "N/A"))
         print(f"  {Colors.BOLD}{Colors.WHITE}[{i+1}]{Colors.ENDC} {Colors.CYAN}{db_name}{Colors.ENDC} ({Colors.GRAY}Region: {db_region}{Colors.ENDC})")
 
-    print("") 
+    print("")
 
     try:
         selection_str = input(f"{Colors.BOLD}{Colors.YELLOW}Enter numbers to delete (or press Enter to cancel): {Colors.ENDC}")
@@ -322,7 +510,7 @@ def interactive_delete():
                 selected_indices.append(int(item) - 1)
             except ValueError:
                 print_warning(f"Invalid input '{item}' skipped. Please enter numbers only.")
-        
+
         dbs_to_delete_names = []
         valid_selections = False
         for i in selected_indices:
@@ -332,7 +520,7 @@ def interactive_delete():
                 valid_selections = True
             else:
                 print_warning(f"Invalid selection number: {i+1}. Skipping.")
-        
+
         if not valid_selections or not dbs_to_delete_names:
             print_error("No valid databases selected for deletion. Aborting.")
             sys.exit(1)
@@ -341,7 +529,7 @@ def interactive_delete():
         print_warning("You are about to PERMANENTLY delete the following databases:")
         for db_name_to_delete in dbs_to_delete_names:
             print(f"  - {Colors.BOLD}{Colors.FAIL}{db_name_to_delete}{Colors.ENDC}")
-        
+
         confirm = input(f"\n{Colors.BOLD}{Colors.YELLOW}Are you absolutely sure? This action cannot be undone. (yes/N): {Colors.ENDC}").strip().lower()
 
         if confirm == 'yes':
@@ -373,10 +561,10 @@ def check_dependencies():
         print_error("Turso CLI is not installed or not in PATH!")
         print_info("Please install Turso CLI from: https://docs.turso.tech/reference/turso-cli")
         sys.exit(1)
-    
+
     turso_version = turso_output.split('\n')[0] if turso_output else "Unknown version"
     print_success(f"Turso CLI found: {Colors.CYAN}{turso_version}{Colors.ENDC}")
-    
+
     try:
         pyperclip.copy("test_clipboard_turso_gen") # Test with a unique string
         if pyperclip.paste() == "test_clipboard_turso_gen":
@@ -406,6 +594,10 @@ def main():
   {Colors.CYAN}python {script_name} --no-clipboard{Colors.ENDC}
     {Colors.GRAY}# Generate a new database but do not copy credentials to clipboard.{Colors.ENDC}
 
+{Colors.BOLD}{Colors.YELLOW}Configuration:{Colors.ENDC}
+  {Colors.CYAN}python {script_name} --configure{Colors.ENDC}
+    {Colors.GRAY}# Open interactive configuration menu to set preferences and disable prompts.{Colors.ENDC}
+
 {Colors.BOLD}{Colors.FAIL}Deletion Commands:{Colors.ENDC}
   {Colors.CYAN}python {script_name} --delete-generation{Colors.ENDC}
     {Colors.GRAY}# Delete the last database specifically created by this script (if tracked).{Colors.ENDC}
@@ -414,11 +606,13 @@ def main():
     {Colors.GRAY}# Show an interactive menu to select and delete any of your Turso databases.{Colors.ENDC}
         """
     )
-    parser.add_argument('--overwrite', metavar='FILENAME', 
+    parser.add_argument('--overwrite', metavar='FILENAME',
                        help='Filename (e.g., .env or .env.production) to update/create in project root.')
     parser.add_argument('--no-clipboard', action='store_true',
                        help='Skip copying credentials to the clipboard.')
-    
+    parser.add_argument('--configure', action='store_true',
+                       help='Open configuration menu to set preferences.')
+
     delete_group = parser.add_argument_group(f'{Colors.BOLD}{Colors.FAIL}Deletion Options{Colors.ENDC} (use one at a time)')
     delete_group.add_argument('--delete-generation', action='store_true',
                               help='Delete the last database created by THIS script (uses state file).')
@@ -435,6 +629,12 @@ def main():
     if args.delete_interactive:
         os.system('clear' if os.name == 'posix' else 'cls')
         interactive_delete()
+        sys.exit(0)
+
+    if args.configure:
+        os.system('clear' if os.name == 'posix' else 'cls')
+        print_ascii_header()
+        configure_script()
         sys.exit(0)
 
     os.system('clear' if os.name == 'posix' else 'cls')
@@ -463,7 +663,7 @@ def main():
         if create_code != 0:
             print_error(f"Database creation failed: {create_error or 'Unknown error'}")
             sys.exit(1)
-        
+
         db_name_match = re.search(r'(?:Created database|Database)\s+([\w-]+)', create_output) # More flexible regex
         if not db_name_match:
             print_error("Could not extract database name from Turso output.")
@@ -484,7 +684,7 @@ def main():
             print_error("Could not extract database URL from Turso output.")
             print_info(f"Output: {show_output}")
             sys.exit(1)
-        db_url = url_match.group(1)
+        DATABASE_URL = url_match.group(1)
         print_success("Database URL retrieved.")
 
         print_step(5, 6, "Generating authentication token...")
@@ -498,11 +698,11 @@ def main():
             print_info(f"Output: {token_output}")
             sys.exit(1)
         print_success("Authentication token generated.")
-        
-        new_vars = {"DB_URL": db_url, "AUTH_TOKEN": auth_token}
-        env_vars_string_for_clipboard = f"DB_URL={db_url}\nAUTH_TOKEN={auth_token}"
 
-        print_env_vars_box(db_url, auth_token, db_name)
+        new_vars = {"DATABASE_URL": DATABASE_URL, "TURSO_AUTH_TOKEN": auth_token}
+        env_vars_string_for_clipboard = f"DATABASE_URL={DATABASE_URL}\nTURSO_AUTH_TOKEN={auth_token}"
+
+        print_env_vars_box(DATABASE_URL, auth_token, db_name)
 
         print_step(6, 6, "Finalizing setup...")
         if args.overwrite:
@@ -516,21 +716,21 @@ def main():
                     print_info(f"Project root identified at: {Colors.CYAN}{project_root}{Colors.ENDC}")
                     break
                 current_dir_check = current_dir_check.parent
-            
+
             env_file_path = project_root / args.overwrite
-            
+
             # Simplified update/append logic (original script's update_env_file is more robust)
             try:
                 # Ensure directory exists
                 env_file_path.parent.mkdir(parents=True, exist_ok=True)
-                
+
                 mode = 'a' if env_file_path.exists() else 'w'
                 with open(env_file_path, mode) as f:
                     if mode == 'a': f.write("\n\n# Turso Credentials (added by script)\n")
                     else: f.write("# Turso Credentials (generated by script)\n")
                     f.write(f"# Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                    f.write(f"DB_URL={db_url}\n")
-                    f.write(f"AUTH_TOKEN={auth_token}\n")
+                    f.write(f"DATABASE_URL={DATABASE_URL}\n")
+                    f.write(f"TURSO_AUTH_TOKEN={auth_token}\n")
                 print_success(f"Environment variables {'appended to' if mode == 'a' else 'written to'} {Colors.CYAN}{env_file_path}{Colors.ENDC}")
             except IOError as e:
                 print_error(f"Could not write to {env_file_path}: {e}")
@@ -544,8 +744,11 @@ def main():
             except Exception as e: # Catch broader pyperclip errors
                 print_warning(f"Could not copy to clipboard: {e}")
                 print_info("You can manually copy the credentials from the box above.")
-        
+
         print_footer(db_name)
+        
+        # Post-completion prompts
+        post_completion_prompts(db_name, DATABASE_URL, auth_token)
 
     except KeyboardInterrupt:
         print_error("\nOperation cancelled by user.")
