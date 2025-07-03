@@ -8,6 +8,19 @@ import time
 import json
 from datetime import datetime
 from pathlib import Path
+try:
+    from rich.console import Console
+    from rich.text import Text
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.prompt import Prompt
+    from rich.live import Live
+    from rich.layout import Layout
+    from rich.align import Align
+    RICH_AVAILABLE = True
+except ImportError:
+    RICH_AVAILABLE = False
+    print("Note: Install 'rich' library for enhanced secret display features: pip install rich")
 
 # Script metadata (automatically updated by pre-commit hook)
 SCRIPT_VERSION = "1.1"
@@ -34,6 +47,99 @@ class Colors:
 CONTENT_WIDTH = 60
 STATE_FILE = Path.home() / ".turso_gen_state.json"
 CONFIG_FILE = Path.home() / ".turso_gen_config.json"
+
+class SecretDisplay:
+    """Class to handle secret display with asterisks and reveal functionality."""
+    
+    def __init__(self, secret, name="secret"):
+        self.secret = secret
+        self.name = name
+        self.is_revealed = False
+    
+    def get_masked_display(self):
+        """Return the secret masked with asterisks."""
+        if len(self.secret) <= 8:
+            return "*" * len(self.secret)
+        else:
+            # Show first 4 and last 4 characters with asterisks in between
+            return f"{self.secret[:4]}{'*' * (len(self.secret) - 8)}{self.secret[-4:]}"
+    
+    def get_full_display(self):
+        """Return the full secret."""
+        return self.secret
+    
+    def get_display(self, reveal=False):
+        """Get the display version of the secret."""
+        if reveal or self.is_revealed:
+            return self.get_full_display()
+        return self.get_masked_display()
+    
+    def toggle_reveal(self):
+        """Toggle the reveal state."""
+        self.is_revealed = not self.is_revealed
+        return self.is_revealed
+    
+    def create_interactive_display(self):
+        """Create an interactive display with reveal option."""
+        if RICH_AVAILABLE:
+            return self._create_rich_display()
+        else:
+            return self._create_simple_display()
+    
+    def _create_rich_display(self):
+        """Create a rich-formatted interactive display."""
+        from rich.text import Text
+        from rich.panel import Panel
+        from rich import print as rprint
+        
+        masked = self.get_masked_display()
+        console = Console()
+        
+        # Create text with click instruction
+        text = Text()
+        text.append(f"{self.name.upper()}: ", style="bold white")
+        text.append(masked, style="yellow")
+        text.append(" ", style="")
+        text.append("[Press 'r' to reveal]", style="dim cyan")
+        
+        return Panel(text, title=f"🔐 {self.name.title()}", border_style="cyan")
+    
+    def _create_simple_display(self):
+        """Create a simple text display."""
+        masked = self.get_masked_display()
+        return f"{Colors.BOLD}{Colors.WHITE}{self.name.upper()}: {Colors.ENDC}{Colors.YELLOW}{masked}{Colors.ENDC} {Colors.CYAN}[Press 'r' to reveal]{Colors.ENDC}"
+    
+    @staticmethod
+    def interactive_reveal_prompt(secrets_dict):
+        """Interactive prompt to reveal secrets."""
+        if not secrets_dict:
+            return
+            
+        print(f"\n{Colors.BOLD}{Colors.CYAN}Secret Management:{Colors.ENDC}")
+        print(f"{Colors.GRAY}Press 'r' + Enter to reveal all secrets, or Enter to continue{Colors.ENDC}")
+        
+        try:
+            user_input = input(f"{Colors.BOLD}{Colors.YELLOW}Action (r/Enter): {Colors.ENDC}").strip().lower()
+            
+            if user_input == 'r':
+                print(f"\n{Colors.BOLD}{Colors.OKGREEN}🔓 Secrets Revealed:{Colors.ENDC}")
+                for name, secret_obj in secrets_dict.items():
+                    print(f"{Colors.BOLD}{Colors.WHITE}{name.upper()}: {Colors.ENDC}{Colors.YELLOW}{secret_obj.get_full_display()}{Colors.ENDC}")
+                
+                # Ask if they want to copy to clipboard
+                copy_input = input(f"\n{Colors.BOLD}{Colors.YELLOW}Copy revealed secrets to clipboard? (y/N): {Colors.ENDC}").strip().lower()
+                if copy_input == 'y':
+                    try:
+                        clipboard_content = "\n".join([f"{name.upper()}={secret_obj.get_full_display()}" for name, secret_obj in secrets_dict.items()])
+                        pyperclip.copy(clipboard_content)
+                        print_success("Revealed secrets copied to clipboard!")
+                    except Exception as e:
+                        print_warning(f"Could not copy to clipboard: {e}")
+                        
+                input(f"\n{Colors.BOLD}{Colors.GRAY}Press Enter to continue...{Colors.ENDC}")
+                
+        except KeyboardInterrupt:
+            print_info("\nContinuing with masked secrets...")
 
 def print_ascii_header():
     """Print a beautiful ASCII header with version and update info."""
@@ -111,7 +217,7 @@ def print_section_divider(title):
     print(f"║{Colors.BOLD}{Colors.WHITE}{title.center(CONTENT_WIDTH)}{Colors.ENDC}{Colors.PURPLE}║")
     print(f"╚{divider}╝{Colors.ENDC}")
 
-def print_env_vars_box(DATABASE_URL, auth_token, db_name):
+def print_env_vars_box(DATABASE_URL, auth_token, db_name, url_var_name="DATABASE_URL", token_var_name="TURSO_AUTH_TOKEN"):
     """Print environment variables in a beautiful, perfectly aligned box."""
     print_section_divider("🔐 GENERATED CREDENTIALS")
 
@@ -125,20 +231,27 @@ def print_env_vars_box(DATABASE_URL, auth_token, db_name):
     line_db_name = create_padded_line(f" {Colors.BOLD}{Colors.WHITE}Database Name: {Colors.CYAN}{db_name}", CONTENT_WIDTH)
     line_created_at = create_padded_line(f" {Colors.BOLD}{Colors.WHITE}Created At:    {Colors.GRAY}{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", CONTENT_WIDTH)
 
-    # Ensure DATABASE_URL and truncated_token are not longer than CONTENT_WIDTH - prefix_length
-    DATABASE_URL_display = DATABASE_URL
-    if len(DATABASE_URL) > CONTENT_WIDTH - 1: # -1 for the leading space
-        DATABASE_URL_display = DATABASE_URL[:CONTENT_WIDTH - 4] + "..."
+    # Create SecretDisplay objects for sensitive data
+    db_url_secret = SecretDisplay(DATABASE_URL, "database_url")
+    auth_token_secret = SecretDisplay(auth_token, "auth_token")
+    
+    # Get masked displays
+    DATABASE_URL_display = db_url_secret.get_masked_display()
+    if len(DATABASE_URL_display) > CONTENT_WIDTH - 1: # -1 for the leading space
+        DATABASE_URL_display = DATABASE_URL_display[:CONTENT_WIDTH - 4] + "..."
 
-    truncated_token = auth_token
-    if len(auth_token) > 30: # Keep original truncation logic for token
-        truncated_token = f"{auth_token[:30]}..."
+    truncated_token = auth_token_secret.get_masked_display()
     if len(truncated_token) > CONTENT_WIDTH -1:
         truncated_token = truncated_token[:CONTENT_WIDTH-4] + "..."
 
-
     line_DATABASE_URL_val = create_padded_line(f" {Colors.YELLOW}{DATABASE_URL_display}", CONTENT_WIDTH)
     line_auth_token_val = create_padded_line(f" {Colors.YELLOW}{truncated_token}", CONTENT_WIDTH)
+    
+    # Store secrets for potential reveal
+    secrets_dict = {
+        "database_url": db_url_secret,
+        "auth_token": auth_token_secret
+    }
 
 
     print(f"""
@@ -148,13 +261,16 @@ def print_env_vars_box(DATABASE_URL, auth_token, db_name):
 {Colors.BOLD}{Colors.WHITE}│{line_db_name}│{Colors.ENDC}
 {Colors.BOLD}{Colors.WHITE}│{line_created_at}│{Colors.ENDC}
 {Colors.BOLD}{Colors.OKGREEN}├{'─' * CONTENT_WIDTH}┤{Colors.ENDC}
-{Colors.BOLD}{Colors.WHITE}│ DATABASE_URL: {' ' * (CONTENT_WIDTH - len("DATABASE_URL: "))}│{Colors.ENDC}
-{Colors.BOLD}{Colors.WHITE}│{line_DATABASE_URL_val}│{Colors.ENDC}
-{Colors.BOLD}{Colors.WHITE}│{' ' * CONTENT_WIDTH}│{Colors.ENDC}
-{Colors.BOLD}{Colors.WHITE}│ TURSO_AUTH_TOKEN: {' ' * (CONTENT_WIDTH - len("TURSO_AUTH_TOKEN: "))}│{Colors.ENDC}
-{Colors.BOLD}{Colors.WHITE}│{line_auth_token_val}│{Colors.ENDC}
+{Colors.BOLD}{Colors.WHITE}│ {url_var_name}: {' ' * (CONTENT_WIDTH - len(f"{url_var_name}: "))}│{Colors.ENDC}
+|{Colors.BOLD}{Colors.WHITE}│{line_DATABASE_URL_val}│{Colors.ENDC}
+|{Colors.BOLD}{Colors.WHITE}│{' ' * CONTENT_WIDTH}│{Colors.ENDC}
+|{Colors.BOLD}{Colors.WHITE}│ {token_var_name}: {' ' * (CONTENT_WIDTH - len(f"{token_var_name}: "))}│{Colors.ENDC}
+|{Colors.BOLD}{Colors.WHITE}│{line_auth_token_val}│{Colors.ENDC}
 {Colors.BOLD}{Colors.OKGREEN}└{'─' * CONTENT_WIDTH}┘{Colors.ENDC}
 """)
+    
+    # Return the secrets dict for use in main function
+    return secrets_dict
 
 
 def print_footer(db_name):
@@ -243,11 +359,24 @@ def load_config():
         "prompts": {
             "delete_generation": True,
             "open_turso_web": True,
-            "paste_to_env": True
+            "paste_to_env": True,
+            "reveal_secrets": True
         },
         "env_file": {
             "default_path": ".env",
             "default_env_dir": "./"
+        },
+        "defaults": {
+            "auto_reveal": "off",
+            "no_clipboard": False,
+            "default_db_prefix": "",
+            "env_url_name": "DATABASE_URL",
+            "env_token_name": "TURSO_AUTH_TOKEN"
+        },
+        "display": {
+            "show_version_info": True,
+            "use_colors": True,
+            "content_width": 60
         }
     }
     
@@ -280,18 +409,34 @@ def configure_script():
     
     config = load_config()
     
-    print_info("Configure post-completion prompts:")
+    print_info("Configure script settings:")
+    print(f"\n{Colors.BOLD}{Colors.WHITE}Post-completion prompts:{Colors.ENDC}")
     print(f"  1. Delete generation prompt: {Colors.CYAN}{'Enabled' if config['prompts']['delete_generation'] else 'Disabled'}{Colors.ENDC}")
     print(f"  2. Open Turso shell prompt: {Colors.CYAN}{'Enabled' if config['prompts']['open_turso_web'] else 'Disabled'}{Colors.ENDC}")
     print(f"  3. Paste to .env prompt: {Colors.CYAN}{'Enabled' if config['prompts']['paste_to_env'] else 'Disabled'}{Colors.ENDC}")
-    print(f"  4. Default .env path: {Colors.CYAN}{config['env_file']['default_path']}{Colors.ENDC}")
-    print(f"  5. Default .env directory: {Colors.CYAN}{config['env_file']['default_env_dir']}{Colors.ENDC}")
+    print(f"  4. Reveal secrets prompt: {Colors.CYAN}{'Enabled' if config['prompts']['reveal_secrets'] else 'Disabled'}{Colors.ENDC}")
+    
+    print(f"\n{Colors.BOLD}{Colors.WHITE}Environment file settings:{Colors.ENDC}")
+    print(f"  5. Default .env path: {Colors.CYAN}{config['env_file']['default_path']}{Colors.ENDC}")
+    print(f"  6. Default .env directory: {Colors.CYAN}{config['env_file']['default_env_dir']}{Colors.ENDC}")
+    
+    print(f"\n{Colors.BOLD}{Colors.WHITE}Default behavior:{Colors.ENDC}")
+    print(f"  7. Auto-reveal secrets: {Colors.CYAN}{config['defaults']['auto_reveal']}{Colors.ENDC}")
+    print(f"  8. Skip clipboard by default: {Colors.CYAN}{'Yes' if config['defaults']['no_clipboard'] else 'No'}{Colors.ENDC}")
+    print(f"  9. Default database prefix: {Colors.CYAN}{config['defaults']['default_db_prefix'] or 'None'}{Colors.ENDC}")
+    print(f" 10. Default URL env var name: {Colors.CYAN}{config['defaults']['env_url_name']}{Colors.ENDC}")
+    print(f" 11. Default token env var name: {Colors.CYAN}{config['defaults']['env_token_name']}{Colors.ENDC}")
+    
+    print(f"\n{Colors.BOLD}{Colors.WHITE}Display settings:{Colors.ENDC}")
+    print(f" 12. Show version info: {Colors.CYAN}{'Enabled' if config['display']['show_version_info'] else 'Disabled'}{Colors.ENDC}")
+    print(f" 13. Use colors: {Colors.CYAN}{'Enabled' if config['display']['use_colors'] else 'Disabled'}{Colors.ENDC}")
+    print(f" 14. Content width: {Colors.CYAN}{config['display']['content_width']}{Colors.ENDC}")
     
     print("\nEnter the number to toggle/change, or press Enter to finish:")
     
     while True:
         try:
-            choice = input(f"{Colors.BOLD}{Colors.YELLOW}Choice (1-5 or Enter): {Colors.ENDC}").strip()
+            choice = input(f"{Colors.BOLD}{Colors.YELLOW}Choice (1-14 or Enter): {Colors.ENDC}").strip()
             
             if not choice:
                 break
@@ -311,17 +456,53 @@ def configure_script():
                 status = "Enabled" if config['prompts']['paste_to_env'] else "Disabled"
                 print(f"Paste to .env prompt: {Colors.CYAN}{status}{Colors.ENDC}")
             elif choice == 4:
+                config['prompts']['reveal_secrets'] = not config['prompts']['reveal_secrets']
+                status = "Enabled" if config['prompts']['reveal_secrets'] else "Disabled"
+                print(f"Reveal secrets prompt: {Colors.CYAN}{status}{Colors.ENDC}")
+            elif choice == 5:
                 new_path = input(f"Enter new default .env filename [{config['env_file']['default_path']}]: ").strip()
                 if new_path:
                     config['env_file']['default_path'] = new_path
                     print(f"Default .env path set to: {Colors.CYAN}{new_path}{Colors.ENDC}")
-            elif choice == 5:
+            elif choice == 6:
                 new_dir = input(f"Enter new default .env directory [{config['env_file']['default_env_dir']}]: ").strip()
                 if new_dir:
                     config['env_file']['default_env_dir'] = new_dir
                     print(f"Default .env directory set to: {Colors.CYAN}{new_dir}{Colors.ENDC}")
+            elif choice == 7:
+                current = config['defaults']['auto_reveal']
+                new_value = 'on' if current == 'off' else 'off'
+                config['defaults']['auto_reveal'] = new_value
+                print(f"Auto-reveal secrets set to: {Colors.CYAN}{new_value}{Colors.ENDC}")
+            elif choice == 8:
+                config['defaults']['no_clipboard'] = not config['defaults']['no_clipboard']
+                status = "Yes" if config['defaults']['no_clipboard'] else "No"
+                print(f"Skip clipboard by default: {Colors.CYAN}{status}{Colors.ENDC}")
+            elif choice == 9:
+                new_prefix = input(f"Enter new default database prefix [{config['defaults']['default_db_prefix'] or 'None'}]: ").strip()
+                config['defaults']['default_db_prefix'] = new_prefix
+                display_prefix = new_prefix or 'None'
+                print(f"Default database prefix set to: {Colors.CYAN}{display_prefix}{Colors.ENDC}")
+            elif choice == 10:
+                config['display']['show_version_info'] = not config['display']['show_version_info']
+                status = "Enabled" if config['display']['show_version_info'] else "Disabled"
+                print(f"Show version info: {Colors.CYAN}{status}{Colors.ENDC}")
+            elif choice == 11:
+                config['display']['use_colors'] = not config['display']['use_colors']
+                status = "Enabled" if config['display']['use_colors'] else "Disabled"
+                print(f"Use colors: {Colors.CYAN}{status}{Colors.ENDC}")
+            elif choice == 12:
+                try:
+                    new_width = int(input(f"Enter new content width [{config['display']['content_width']}]: ").strip())
+                    if 40 <= new_width <= 120:  # Reasonable bounds
+                        config['display']['content_width'] = new_width
+                        print(f"Content width set to: {Colors.CYAN}{new_width}{Colors.ENDC}")
+                    else:
+                        print_warning("Width must be between 40 and 120 characters.")
+                except ValueError:
+                    print_warning("Please enter a valid number.")
             else:
-                print_warning("Invalid choice. Please enter 1-5.")
+                print_warning("Invalid choice. Please enter 1-12.")
                 
         except ValueError:
             print_warning("Invalid input. Please enter a number 1-5.")
@@ -336,6 +517,37 @@ def post_completion_prompts(db_name, DATABASE_URL, auth_token):
     """Handle post-completion prompts based on configuration."""
     config = load_config()
     
+    # Show a beautifully styled options panel
+    options_title = "💡 ADDITIONAL OPTIONS AVAILABLE"
+    option1 = "🗑️  Delete this database"
+    option2 = "🔧 Open database shell"
+    option3 = "💾 Save to .env file"
+    
+    # Calculate padding for centering
+    title_padding = (CONTENT_WIDTH - len(options_title)) // 2
+    option_padding = 3  # Left padding for options
+    
+    print(f"""
+{Colors.PURPLE}╔{'═' * CONTENT_WIDTH}╗
+║{' ' * title_padding}{Colors.BOLD}{Colors.WHITE}{options_title}{Colors.ENDC}{Colors.PURPLE}{' ' * (CONTENT_WIDTH - title_padding - len(options_title))}║
+║{' ' * CONTENT_WIDTH}║
+║{' ' * option_padding}{Colors.CYAN}{option1}{Colors.ENDC}{Colors.PURPLE}{' ' * (CONTENT_WIDTH - option_padding - len(option1))}║
+║{' ' * option_padding}{Colors.CYAN}{option2}{Colors.ENDC}{Colors.PURPLE}{' ' * (CONTENT_WIDTH - option_padding - len(option2))}║
+║{' ' * option_padding}{Colors.CYAN}{option3}{Colors.ENDC}{Colors.PURPLE}{' ' * (CONTENT_WIDTH - option_padding - len(option3))}║
+║{' ' * CONTENT_WIDTH}║
+╚{'═' * CONTENT_WIDTH}╝{Colors.ENDC}""")
+    
+    try:
+        options_choice = input(f"\n{Colors.BOLD}{Colors.YELLOW}Press 'o' to access options or Enter to finish: {Colors.ENDC}").strip().lower()
+        
+        if options_choice != 'o':
+            return  # Exit if user doesn't want options
+            
+    except KeyboardInterrupt:
+        print_info("\nFinishing...")
+        return
+    
+    # Only show the options section if user pressed 'o'
     print_section_divider("🎯 POST-COMPLETION OPTIONS")
     
     # Delete generation prompt
@@ -423,6 +635,30 @@ def post_completion_prompts(db_name, DATABASE_URL, auth_token):
                     
         except KeyboardInterrupt:
             print_info("\nSkipping .env prompt.")
+
+def check_database_exists(db_name):
+    """Check if a database with the given name already exists."""
+    print_info(f"Checking if database '{Colors.CYAN}{db_name}{Colors.ENDC}' already exists...")
+    
+    output, error, code = run_command("turso db list --json")
+    if code != 0:
+        print_warning("Could not fetch database list for existence check.")
+        if error: print_warning(f"Turso CLI Error: {error}")
+        return False  # Assume it doesn't exist if we can't check
+    
+    try:
+        data = json.loads(output)
+        databases = data.get("databases", data.get("dbs", []))
+        
+        for db_info in databases:
+            existing_name = db_info.get("Name", db_info.get("name", ""))
+            if existing_name == db_name:
+                return True
+        return False
+        
+    except (json.JSONDecodeError, KeyError) as e:
+        print_warning(f"Could not parse database list: {e}")
+        return False  # Assume it doesn't exist if we can't parse
 
 def delete_database(db_name):
     """Deletes a Turso database."""
@@ -606,10 +842,18 @@ def main():
     {Colors.GRAY}# Show an interactive menu to select and delete any of your Turso databases.{Colors.ENDC}
         """
     )
+    parser.add_argument('--name', metavar='DB_NAME',
+                       help='Custom name for the database. If not provided, Turso will generate a random name.')
     parser.add_argument('--overwrite', metavar='FILENAME',
                        help='Filename (e.g., .env or .env.production) to update/create in project root.')
     parser.add_argument('--no-clipboard', action='store_true',
                        help='Skip copying credentials to the clipboard.')
+    parser.add_argument('--auto-reveal', choices=['on', 'off'], default='off',
+                       help='Automatically reveal secrets without prompting. Default: off')
+    parser.add_argument('--env-url-name', metavar='VAR_NAME', default='DATABASE_URL',
+                       help='Custom name for the database URL environment variable. Default: DATABASE_URL')
+    parser.add_argument('--env-token-name', metavar='VAR_NAME', default='TURSO_AUTH_TOKEN',
+                       help='Custom name for the auth token environment variable. Default: TURSO_AUTH_TOKEN')
     parser.add_argument('--configure', action='store_true',
                        help='Open configuration menu to set preferences.')
 
@@ -620,6 +864,25 @@ def main():
                               help='Interactively select and delete any of your Turso databases.')
 
     args = parser.parse_args()
+    
+    # Load configuration and apply defaults if arguments weren't explicitly provided
+    config = load_config()
+    
+    # Apply configuration defaults if arguments weren't explicitly set
+    if '--auto-reveal' not in sys.argv:
+        args.auto_reveal = config['defaults']['auto_reveal']
+    
+    if '--no-clipboard' not in sys.argv and config['defaults']['no_clipboard']:
+        args.no_clipboard = True
+    
+    # Apply database prefix if name wasn't provided and prefix is configured
+    if not args.name and config['defaults']['default_db_prefix']:
+        prefix = config['defaults']['default_db_prefix']
+        args.name = f"{prefix}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    
+    # Apply display settings
+    global CONTENT_WIDTH
+    CONTENT_WIDTH = config['display']['content_width']
 
     if args.delete_generation:
         os.system('clear' if os.name == 'posix' else 'cls') # Clear screen for focused output
@@ -659,7 +922,10 @@ def main():
         print_step(3, 6, "Creating new Turso database...")
         # Using retry_operation for robustness, assuming it's defined as in the original script
         # For now, direct call:
-        create_output, create_error, create_code = run_command("turso db create", timeout=90) # Increased timeout
+        db_create_command = f"turso db create"
+        if args.name:
+            db_create_command += f" {args.name}"
+        create_output, create_error, create_code = run_command(db_create_command, timeout=90) # Increased timeout
         if create_code != 0:
             print_error(f"Database creation failed: {create_error or 'Unknown error'}")
             sys.exit(1)
@@ -699,12 +965,68 @@ def main():
             sys.exit(1)
         print_success("Authentication token generated.")
 
-        new_vars = {"DATABASE_URL": DATABASE_URL, "TURSO_AUTH_TOKEN": auth_token}
-        env_vars_string_for_clipboard = f"DATABASE_URL={DATABASE_URL}\nTURSO_AUTH_TOKEN={auth_token}"
+        # Use custom environment variable names
+        url_var_name = args.env_url_name
+        token_var_name = args.env_token_name
+        
+        new_vars = {url_var_name: DATABASE_URL, token_var_name: auth_token}
+        env_vars_string_for_clipboard = f"{url_var_name}={DATABASE_URL}\n{token_var_name}={auth_token}"
 
-        print_env_vars_box(DATABASE_URL, auth_token, db_name)
+        # Show credentials box with masked secrets
+        secrets_dict = print_env_vars_box(DATABASE_URL, auth_token, db_name, url_var_name, token_var_name)
 
         print_step(6, 6, "Finalizing setup...")
+        
+        # Copy to clipboard first
+        if not args.no_clipboard:
+            try:
+                pyperclip.copy(env_vars_string_for_clipboard)
+                print_success("🔗 URL and auth token copied to clipboard!")
+                
+                # Handle auto-reveal or ask if they want to reveal the secrets
+                if args.auto_reveal == 'on':
+                    print(f"\n{Colors.BOLD}{Colors.OKGREEN}🔓 Secrets Revealed (auto-reveal enabled):{Colors.ENDC}")
+                    print(f"{Colors.BOLD}{Colors.WHITE}{url_var_name}: {Colors.ENDC}{Colors.YELLOW}{DATABASE_URL}{Colors.ENDC}")
+                    print(f"{Colors.BOLD}{Colors.WHITE}{token_var_name}: {Colors.ENDC}{Colors.YELLOW}{auth_token}{Colors.ENDC}")
+                    input(f"\n{Colors.BOLD}{Colors.GRAY}Press Enter to continue...{Colors.ENDC}")
+                else:
+                    try:
+                        reveal_choice = input(f"\n{Colors.BOLD}{Colors.YELLOW}Do you want to reveal them? (y/N): {Colors.ENDC}").strip().lower()
+                        if reveal_choice == 'y':
+                            print(f"\n{Colors.BOLD}{Colors.OKGREEN}🔓 Secrets Revealed:{Colors.ENDC}")
+                            print(f"{Colors.BOLD}{Colors.WHITE}{url_var_name}: {Colors.ENDC}{Colors.YELLOW}{DATABASE_URL}{Colors.ENDC}")
+                            print(f"{Colors.BOLD}{Colors.WHITE}{token_var_name}: {Colors.ENDC}{Colors.YELLOW}{auth_token}{Colors.ENDC}")
+                            input(f"\n{Colors.BOLD}{Colors.GRAY}Press Enter to continue...{Colors.ENDC}")
+                        else:
+                            print_info("Continuing with masked secrets...")
+                    except KeyboardInterrupt:
+                        print_info("\nContinuing with masked secrets...")
+                    
+            except Exception as e: # Catch broader pyperclip errors
+                print_warning(f"Could not copy to clipboard: {e}")
+                print_info("You can manually copy the credentials from the box above.")
+                # Still offer to reveal secrets even if clipboard failed
+                try:
+                    reveal_choice = input(f"\n{Colors.BOLD}{Colors.YELLOW}Do you want to reveal the secrets? (y/N): {Colors.ENDC}").strip().lower()
+                    if reveal_choice == 'y':
+                        print(f"\n{Colors.BOLD}{Colors.OKGREEN}🔓 Secrets Revealed:{Colors.ENDC}")
+                        print(f"{Colors.BOLD}{Colors.WHITE}{url_var_name}: {Colors.ENDC}{Colors.YELLOW}{DATABASE_URL}{Colors.ENDC}")
+                        print(f"{Colors.BOLD}{Colors.WHITE}{token_var_name}: {Colors.ENDC}{Colors.YELLOW}{auth_token}{Colors.ENDC}")
+                        input(f"\n{Colors.BOLD}{Colors.GRAY}Press Enter to continue...{Colors.ENDC}")
+                except KeyboardInterrupt:
+                    print_info("\nContinuing...")
+        else:
+            # If --no-clipboard is used, still offer to reveal secrets
+            try:
+                reveal_choice = input(f"\n{Colors.BOLD}{Colors.YELLOW}Do you want to reveal the secrets? (y/N): {Colors.ENDC}").strip().lower()
+                if reveal_choice == 'y':
+                    print(f"\n{Colors.BOLD}{Colors.OKGREEN}🔓 Secrets Revealed:{Colors.ENDC}")
+                    print(f"{Colors.BOLD}{Colors.WHITE}{url_var_name}: {Colors.ENDC}{Colors.YELLOW}{DATABASE_URL}{Colors.ENDC}")
+                    print(f"{Colors.BOLD}{Colors.WHITE}{token_var_name}: {Colors.ENDC}{Colors.YELLOW}{auth_token}{Colors.ENDC}")
+                    input(f"\n{Colors.BOLD}{Colors.GRAY}Press Enter to continue...{Colors.ENDC}")
+            except KeyboardInterrupt:
+                print_info("\nContinuing...")
+        
         if args.overwrite:
             # Using a simplified version of original script's project root detection
             project_root = Path.cwd() # Default to current directory
@@ -736,14 +1058,6 @@ def main():
                 print_error(f"Could not write to {env_file_path}: {e}")
         else:
             print_info(f"To save credentials to a file, use: {Colors.BOLD}--overwrite FILENAME{Colors.ENDC}")
-
-        if not args.no_clipboard:
-            try:
-                pyperclip.copy(env_vars_string_for_clipboard)
-                print_success("Environment variables copied to clipboard!")
-            except Exception as e: # Catch broader pyperclip errors
-                print_warning(f"Could not copy to clipboard: {e}")
-                print_info("You can manually copy the credentials from the box above.")
 
         print_footer(db_name)
         
