@@ -42,6 +42,10 @@ class Colors:
     CYAN = '\033[36m'
     WHITE = '\033[37m'
     GRAY = '\033[90m'
+    BRIGHT_CYAN = '\033[96m'
+    BRIGHT_WHITE = '\033[97m'
+    ORANGE = '\033[38;5;208m'
+    LIGHT_BLUE = '\033[38;5;117m'
 
 # Define a standard width for the content of all boxes
 CONTENT_WIDTH = 60
@@ -98,7 +102,7 @@ class SecretDisplay:
         # Create text with click instruction
         text = Text()
         text.append(f"{self.name.upper()}: ", style="bold white")
-        text.append(masked, style="yellow")
+        text.append(masked, style="bright_cyan")
         text.append(" ", style="")
         text.append("[Press 'r' to reveal]", style="dim cyan")
         
@@ -107,7 +111,7 @@ class SecretDisplay:
     def _create_simple_display(self):
         """Create a simple text display."""
         masked = self.get_masked_display()
-        return f"{Colors.BOLD}{Colors.WHITE}{self.name.upper()}: {Colors.ENDC}{Colors.YELLOW}{masked}{Colors.ENDC} {Colors.CYAN}[Press 'r' to reveal]{Colors.ENDC}"
+        return f"{Colors.BOLD}{Colors.ORANGE}{self.name.upper()}: {Colors.ENDC}{Colors.BRIGHT_CYAN}{masked}{Colors.ENDC} {Colors.CYAN}[Press 'r' to reveal]{Colors.ENDC}"
     
     @staticmethod
     def interactive_reveal_prompt(secrets_dict):
@@ -119,15 +123,15 @@ class SecretDisplay:
         print(f"{Colors.GRAY}Press 'r' + Enter to reveal all secrets, or Enter to continue{Colors.ENDC}")
         
         try:
-            user_input = input(f"{Colors.BOLD}{Colors.YELLOW}Action (r/Enter): {Colors.ENDC}").strip().lower()
+            user_input = input(f"{Colors.BOLD}{Colors.ORANGE}Action (r/Enter): {Colors.ENDC}").strip().lower()
             
             if user_input == 'r':
                 print(f"\n{Colors.BOLD}{Colors.OKGREEN}🔓 Secrets Revealed:{Colors.ENDC}")
                 for name, secret_obj in secrets_dict.items():
-                    print(f"{Colors.BOLD}{Colors.WHITE}{name.upper()}: {Colors.ENDC}{Colors.YELLOW}{secret_obj.get_full_display()}{Colors.ENDC}")
+                    print(f"{Colors.BOLD}{Colors.ORANGE}{name.upper()}: {Colors.ENDC}{Colors.BRIGHT_CYAN}{secret_obj.get_full_display()}{Colors.ENDC}")
                 
                 # Ask if they want to copy to clipboard
-                copy_input = input(f"\n{Colors.BOLD}{Colors.YELLOW}Copy revealed secrets to clipboard? (y/N): {Colors.ENDC}").strip().lower()
+                copy_input = input(f"\n{Colors.BOLD}{Colors.ORANGE}Copy revealed secrets to clipboard? (y/N): {Colors.ENDC}").strip().lower()
                 if copy_input == 'y':
                     try:
                         clipboard_content = "\n".join([f"{name.upper()}={secret_obj.get_full_display()}" for name, secret_obj in secrets_dict.items()])
@@ -184,7 +188,7 @@ def print_ascii_header():
 ║  {Colors.BOLD}{Colors.WHITE}           ██║   ╚██████╔╝██║  ██║███████║╚██████╔╝{Colors.ENDC}{Colors.CYAN}         ║
 ║  {Colors.BOLD}{Colors.WHITE}          ╚═╝    ╚═════╝ ╚═╝  ╚═╝╚══════╝ ╚═════╝{Colors.ENDC}{Colors.CYAN}           ║
 ║                                                              ║
-║           {Colors.BOLD}{Colors.YELLOW}🚀 Database Generator & Token Creator 🚀{Colors.ENDC}{Colors.CYAN}           ║
+║           {Colors.BOLD}{Colors.ORANGE}🚀 Database Generator & Token Creator 🚀{Colors.ENDC}{Colors.CYAN}           ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝{Colors.ENDC}
 """)
@@ -227,9 +231,9 @@ def print_env_vars_box(DATABASE_URL, auth_token, db_name, url_var_name="DATABASE
         padding = total_width - len(plain_text)
         return f"{text_to_pad}{' ' * max(0, padding)}" # Ensure padding is not negative
 
-    line_title = create_padded_line(f"      {Colors.BOLD}{Colors.WHITE}DATABASE CREDENTIALS", CONTENT_WIDTH)
+    line_title = create_padded_line(f"  {Colors.BOLD}{Colors.WHITE}DATABASE CREDENTIALS", CONTENT_WIDTH)
     line_db_name = create_padded_line(f" {Colors.BOLD}{Colors.WHITE}Database Name: {Colors.CYAN}{db_name}", CONTENT_WIDTH)
-    line_created_at = create_padded_line(f" {Colors.BOLD}{Colors.WHITE}Created At:    {Colors.GRAY}{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", CONTENT_WIDTH)
+    line_created_at = create_padded_line(f" {Colors.BOLD}{Colors.WHITE}Created At:  {Colors.GRAY}{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", CONTENT_WIDTH)
 
     # Create SecretDisplay objects for sensitive data
     db_url_secret = SecretDisplay(DATABASE_URL, "database_url")
@@ -244,8 +248,8 @@ def print_env_vars_box(DATABASE_URL, auth_token, db_name, url_var_name="DATABASE
     if len(truncated_token) > CONTENT_WIDTH -1:
         truncated_token = truncated_token[:CONTENT_WIDTH-4] + "..."
 
-    line_DATABASE_URL_val = create_padded_line(f" {Colors.YELLOW}{DATABASE_URL_display}", CONTENT_WIDTH)
-    line_auth_token_val = create_padded_line(f" {Colors.YELLOW}{truncated_token}", CONTENT_WIDTH)
+    line_DATABASE_URL_val = create_padded_line(f" {Colors.BRIGHT_CYAN}{DATABASE_URL_display}{Colors.ENDC}", CONTENT_WIDTH)
+    line_auth_token_val = create_padded_line(f" {Colors.BRIGHT_CYAN}{truncated_token}{Colors.ENDC}", CONTENT_WIDTH)
     
     # Store secrets for potential reveal
     secrets_dict = {
@@ -282,7 +286,7 @@ def print_footer(db_name):
 
     line1 = f"{Colors.BOLD}{Colors.OKGREEN}{line1_raw}{Colors.ENDC}".center(CONTENT_WIDTH + len(f"{Colors.BOLD}{Colors.OKGREEN}{Colors.ENDC}") - len(line1_raw))
     line2 = f"{Colors.BOLD}{Colors.CYAN}{line2_raw}{Colors.ENDC}".center(CONTENT_WIDTH + len(f"{Colors.BOLD}{Colors.CYAN}{Colors.ENDC}") - len(line2_raw))
-    line3 = f"{Colors.BOLD}{Colors.YELLOW}{line3_raw}{Colors.ENDC}".center(CONTENT_WIDTH + len(f"{Colors.BOLD}{Colors.YELLOW}{Colors.ENDC}") - len(line3_raw))
+    line3 = f"{Colors.BOLD}{Colors.ORANGE}{line3_raw}{Colors.ENDC}".center(CONTENT_WIDTH + len(f"{Colors.BOLD}{Colors.ORANGE}{Colors.ENDC}") - len(line3_raw))
     line4 = f"{Colors.BOLD}{Colors.WHITE}{line4_raw}{Colors.ENDC}".center(CONTENT_WIDTH + len(f"{Colors.BOLD}{Colors.WHITE}{Colors.ENDC}") - len(line4_raw))
 
     # --- Logic for two-line delete command ---
@@ -436,7 +440,7 @@ def configure_script():
     
     while True:
         try:
-            choice = input(f"{Colors.BOLD}{Colors.YELLOW}Choice (1-14 or Enter): {Colors.ENDC}").strip()
+            choice = input(f"{Colors.BOLD}{Colors.ORANGE}Choice (1-14 or Enter): {Colors.ENDC}").strip()
             
             if not choice:
                 break
@@ -538,7 +542,7 @@ def post_completion_prompts(db_name, DATABASE_URL, auth_token):
 ╚{'═' * CONTENT_WIDTH}╝{Colors.ENDC}""")
     
     try:
-        options_choice = input(f"\n{Colors.BOLD}{Colors.YELLOW}Press 'o' to access options or Enter to finish: {Colors.ENDC}").strip().lower()
+        options_choice = input(f"\n{Colors.BOLD}{Colors.ORANGE}Press 'o' to access options or Enter to finish: {Colors.ENDC}").strip().lower()
         
         if options_choice != 'o':
             return  # Exit if user doesn't want options
@@ -553,7 +557,7 @@ def post_completion_prompts(db_name, DATABASE_URL, auth_token):
     # Delete generation prompt
     if config['prompts']['delete_generation']:
         try:
-            delete_choice = input(f"{Colors.BOLD}{Colors.YELLOW}Delete this generation? (y/N): {Colors.ENDC}").strip().lower()
+            delete_choice = input(f"{Colors.BOLD}{Colors.ORANGE}Delete this generation? (y/N): {Colors.ENDC}").strip().lower()
             if delete_choice == 'y':
                 if delete_database(db_name):
                     print_success("Database deleted successfully!")
@@ -569,7 +573,7 @@ def post_completion_prompts(db_name, DATABASE_URL, auth_token):
     # Open Turso shell prompt
     if config['prompts']['open_turso_web']:
         try:
-            shell_choice = input(f"{Colors.BOLD}{Colors.YELLOW}Open database shell connection? (y/N): {Colors.ENDC}").strip().lower()
+            shell_choice = input(f"{Colors.BOLD}{Colors.ORANGE}Open database shell connection? (y/N): {Colors.ENDC}").strip().lower()
             if shell_choice == 'y':
                 try:
                     print_success("Opening Turso database shell...")
@@ -596,14 +600,14 @@ def post_completion_prompts(db_name, DATABASE_URL, auth_token):
     # Paste to .env prompt
     if config['prompts']['paste_to_env']:
         try:
-            env_choice = input(f"{Colors.BOLD}{Colors.YELLOW}Paste credentials to .env file? (y/N): {Colors.ENDC}").strip().lower()
+            env_choice = input(f"{Colors.BOLD}{Colors.ORANGE}Paste credentials to .env file? (y/N): {Colors.ENDC}").strip().lower()
             if env_choice == 'y':
                 # Get the default path from config
                 default_env_path = config['env_file']['default_path']
                 default_env_dir = config['env_file']['default_env_dir']
                 
                 suggested_path = f"{default_env_dir.rstrip('/')}/{default_env_path}"
-                env_path = input(f"{Colors.BOLD}{Colors.YELLOW}Enter .env file path [{suggested_path}]: {Colors.ENDC}").strip()
+                env_path = input(f"{Colors.BOLD}{Colors.ORANGE}Enter .env file path [{suggested_path}]: {Colors.ENDC}").strip()
                 
                 if not env_path:
                     env_path = suggested_path
@@ -614,7 +618,7 @@ def post_completion_prompts(db_name, DATABASE_URL, auth_token):
                     
                     # Check if file exists and ask for overwrite
                     if env_file_path.exists():
-                        overwrite = input(f"{Colors.BOLD}{Colors.YELLOW}File exists. Append to existing file? (Y/n): {Colors.ENDC}").strip().lower()
+                        overwrite = input(f"{Colors.BOLD}{Colors.ORANGE}File exists. Append to existing file? (Y/n): {Colors.ENDC}").strip().lower()
                         mode = 'a' if overwrite != 'n' else 'w'
                     else:
                         mode = 'w'
@@ -723,7 +727,7 @@ def interactive_delete():
         sys.exit(0)
 
     print_info("Select databases to delete by typing their numbers, separated by spaces.")
-    print_info(f"Example: '{Colors.YELLOW}1 3 4{Colors.ENDC}' to select databases 1, 3, and 4.")
+    print_info(f"Example: '{Colors.ORANGE}1 3 4{Colors.ENDC}' to select databases 1, 3, and 4.")
     print("")
 
     for i, db_info in enumerate(databases):
@@ -735,7 +739,7 @@ def interactive_delete():
     print("")
 
     try:
-        selection_str = input(f"{Colors.BOLD}{Colors.YELLOW}Enter numbers to delete (or press Enter to cancel): {Colors.ENDC}")
+        selection_str = input(f"\n{Colors.BOLD}{Colors.ORANGE}Enter numbers to delete (or press Enter to cancel): {Colors.ENDC}")
         if not selection_str.strip():
             print_info("Deletion cancelled by user.")
             sys.exit(0)
@@ -766,7 +770,7 @@ def interactive_delete():
         for db_name_to_delete in dbs_to_delete_names:
             print(f"  - {Colors.BOLD}{Colors.FAIL}{db_name_to_delete}{Colors.ENDC}")
 
-        confirm = input(f"\n{Colors.BOLD}{Colors.YELLOW}Are you absolutely sure? This action cannot be undone. (yes/N): {Colors.ENDC}").strip().lower()
+        confirm = input(f"\n{Colors.BOLD}{Colors.ORANGE}Are you absolutely sure? This action cannot be undone. (yes/N): {Colors.ENDC}").strip().lower()
 
         if confirm == 'yes':
             print_info("Proceeding with deletion...")
@@ -817,7 +821,7 @@ def check_dependencies():
 def main():
     script_name = os.path.basename(sys.argv[0])
     parser = argparse.ArgumentParser(
-        description=f'{Colors.BOLD}{Colors.YELLOW}Turso Database & Token Generator{Colors.ENDC} - Automate Turso DB tasks.',
+        description=f'{Colors.BOLD}{Colors.ORANGE}Turso Database & Token Generator{Colors.ENDC} - Automate Turso DB tasks.',
         formatter_class=argparse.RawTextHelpFormatter, # Allows for better formatting in help
         epilog=f"""
 {Colors.BOLD}{Colors.WHITE}Examples:{Colors.ENDC}
@@ -830,7 +834,7 @@ def main():
   {Colors.CYAN}python {script_name} --no-clipboard{Colors.ENDC}
     {Colors.GRAY}# Generate a new database but do not copy credentials to clipboard.{Colors.ENDC}
 
-{Colors.BOLD}{Colors.YELLOW}Configuration:{Colors.ENDC}
+{Colors.BOLD}{Colors.ORANGE}Configuration:{Colors.ENDC}
   {Colors.CYAN}python {script_name} --configure{Colors.ENDC}
     {Colors.GRAY}# Open interactive configuration menu to set preferences and disable prompts.{Colors.ENDC}
 
@@ -986,16 +990,16 @@ def main():
                 # Handle auto-reveal or ask if they want to reveal the secrets
                 if args.auto_reveal == 'on':
                     print(f"\n{Colors.BOLD}{Colors.OKGREEN}🔓 Secrets Revealed (auto-reveal enabled):{Colors.ENDC}")
-                    print(f"{Colors.BOLD}{Colors.WHITE}{url_var_name}: {Colors.ENDC}{Colors.YELLOW}{DATABASE_URL}{Colors.ENDC}")
-                    print(f"{Colors.BOLD}{Colors.WHITE}{token_var_name}: {Colors.ENDC}{Colors.YELLOW}{auth_token}{Colors.ENDC}")
-                    input(f"\n{Colors.BOLD}{Colors.GRAY}Press Enter to continue...{Colors.ENDC}")
+                    print(f"{Colors.BOLD}{Colors.ORANGE}{url_var_name}: {Colors.ENDC}{Colors.BRIGHT_CYAN}{DATABASE_URL}{Colors.ENDC}")
+                    print(f"{Colors.BOLD}{Colors.ORANGE}{token_var_name}: {Colors.ENDC}{Colors.BRIGHT_CYAN}{auth_token}{Colors.ENDC}")
+                    input(f"{Colors.BOLD}{Colors.GRAY}Press Enter to continue...{Colors.ENDC}")
                 else:
                     try:
-                        reveal_choice = input(f"\n{Colors.BOLD}{Colors.YELLOW}Do you want to reveal them? (y/N): {Colors.ENDC}").strip().lower()
+                        reveal_choice = input(f"\n{Colors.BOLD}{Colors.ORANGE}Do you want to reveal them? (y/N): {Colors.ENDC}").strip().lower()
                         if reveal_choice == 'y':
                             print(f"\n{Colors.BOLD}{Colors.OKGREEN}🔓 Secrets Revealed:{Colors.ENDC}")
-                            print(f"{Colors.BOLD}{Colors.WHITE}{url_var_name}: {Colors.ENDC}{Colors.YELLOW}{DATABASE_URL}{Colors.ENDC}")
-                            print(f"{Colors.BOLD}{Colors.WHITE}{token_var_name}: {Colors.ENDC}{Colors.YELLOW}{auth_token}{Colors.ENDC}")
+                            print(f"{Colors.BOLD}{Colors.ORANGE}{url_var_name}: {Colors.ENDC}{Colors.BRIGHT_CYAN}{DATABASE_URL}{Colors.ENDC}")
+                            print(f"{Colors.BOLD}{Colors.ORANGE}{token_var_name}: {Colors.ENDC}{Colors.BRIGHT_CYAN}{auth_token}{Colors.ENDC}")
                             input(f"\n{Colors.BOLD}{Colors.GRAY}Press Enter to continue...{Colors.ENDC}")
                         else:
                             print_info("Continuing with masked secrets...")
@@ -1007,22 +1011,22 @@ def main():
                 print_info("You can manually copy the credentials from the box above.")
                 # Still offer to reveal secrets even if clipboard failed
                 try:
-                    reveal_choice = input(f"\n{Colors.BOLD}{Colors.YELLOW}Do you want to reveal the secrets? (y/N): {Colors.ENDC}").strip().lower()
+                    reveal_choice = input(f"\n{Colors.BOLD}{Colors.ORANGE}Do you want to reveal the secrets? (y/N): {Colors.ENDC}").strip().lower()
                     if reveal_choice == 'y':
                         print(f"\n{Colors.BOLD}{Colors.OKGREEN}🔓 Secrets Revealed:{Colors.ENDC}")
-                        print(f"{Colors.BOLD}{Colors.WHITE}{url_var_name}: {Colors.ENDC}{Colors.YELLOW}{DATABASE_URL}{Colors.ENDC}")
-                        print(f"{Colors.BOLD}{Colors.WHITE}{token_var_name}: {Colors.ENDC}{Colors.YELLOW}{auth_token}{Colors.ENDC}")
+                        print(f"{Colors.BOLD}{Colors.ORANGE}{url_var_name}: {Colors.ENDC}{Colors.BRIGHT_CYAN}{DATABASE_URL}{Colors.ENDC}")
+                        print(f"{Colors.BOLD}{Colors.ORANGE}{token_var_name}: {Colors.ENDC}{Colors.BRIGHT_CYAN}{auth_token}{Colors.ENDC}")
                         input(f"\n{Colors.BOLD}{Colors.GRAY}Press Enter to continue...{Colors.ENDC}")
                 except KeyboardInterrupt:
                     print_info("\nContinuing...")
         else:
             # If --no-clipboard is used, still offer to reveal secrets
             try:
-                reveal_choice = input(f"\n{Colors.BOLD}{Colors.YELLOW}Do you want to reveal the secrets? (y/N): {Colors.ENDC}").strip().lower()
+                reveal_choice = input(f"\n{Colors.BOLD}{Colors.ORANGE}Do you want to reveal the secrets? (y/N): {Colors.ENDC}").strip().lower()
                 if reveal_choice == 'y':
                     print(f"\n{Colors.BOLD}{Colors.OKGREEN}🔓 Secrets Revealed:{Colors.ENDC}")
-                    print(f"{Colors.BOLD}{Colors.WHITE}{url_var_name}: {Colors.ENDC}{Colors.YELLOW}{DATABASE_URL}{Colors.ENDC}")
-                    print(f"{Colors.BOLD}{Colors.WHITE}{token_var_name}: {Colors.ENDC}{Colors.YELLOW}{auth_token}{Colors.ENDC}")
+                    print(f"{Colors.BOLD}{Colors.ORANGE}{url_var_name}: {Colors.ENDC}{Colors.BRIGHT_CYAN}{DATABASE_URL}{Colors.ENDC}")
+                    print(f"{Colors.BOLD}{Colors.ORANGE}{token_var_name}: {Colors.ENDC}{Colors.BRIGHT_CYAN}{auth_token}{Colors.ENDC}")
                     input(f"\n{Colors.BOLD}{Colors.GRAY}Press Enter to continue...{Colors.ENDC}")
             except KeyboardInterrupt:
                 print_info("\nContinuing...")
