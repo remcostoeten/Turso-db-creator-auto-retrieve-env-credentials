@@ -377,6 +377,12 @@ def load_config():
             "env_url_name": "DATABASE_URL",
             "env_token_name": "TURSO_AUTH_TOKEN"
         },
+        "seeding": {
+            "default_mode": "off",
+            "confirm_before_seed": True,
+            "drizzle_config_path": "",
+            "sql_migration_path": ""
+        },
         "display": {
             "show_version_info": True,
             "use_colors": True,
@@ -431,16 +437,22 @@ def configure_script():
     print(f" 10. Default URL env var name: {Colors.CYAN}{config['defaults']['env_url_name']}{Colors.ENDC}")
     print(f" 11. Default token env var name: {Colors.CYAN}{config['defaults']['env_token_name']}{Colors.ENDC}")
     
+    print(f"\n{Colors.BOLD}{Colors.WHITE}Seeding settings:{Colors.ENDC}")
+    print(f" 12. Default seeding mode: {Colors.CYAN}{config['seeding']['default_mode']}{Colors.ENDC}")
+    print(f" 13. Confirm before seed: {Colors.CYAN}{'Enabled' if config['seeding']['confirm_before_seed'] else 'Disabled'}{Colors.ENDC}")
+    print(f" 14. Default Drizzle config path: {Colors.CYAN}{config['seeding']['drizzle_config_path'] or 'None'}{Colors.ENDC}")
+    print(f" 15. Default SQL migration path: {Colors.CYAN}{config['seeding']['sql_migration_path'] or 'None'}{Colors.ENDC}")
+
     print(f"\n{Colors.BOLD}{Colors.WHITE}Display settings:{Colors.ENDC}")
-    print(f" 12. Show version info: {Colors.CYAN}{'Enabled' if config['display']['show_version_info'] else 'Disabled'}{Colors.ENDC}")
-    print(f" 13. Use colors: {Colors.CYAN}{'Enabled' if config['display']['use_colors'] else 'Disabled'}{Colors.ENDC}")
-    print(f" 14. Content width: {Colors.CYAN}{config['display']['content_width']}{Colors.ENDC}")
+    print(f" 16. Show version info: {Colors.CYAN}{'Enabled' if config['display']['show_version_info'] else 'Disabled'}{Colors.ENDC}")
+    print(f" 17. Use colors: {Colors.CYAN}{'Enabled' if config['display']['use_colors'] else 'Disabled'}{Colors.ENDC}")
+    print(f" 18. Content width: {Colors.CYAN}{config['display']['content_width']}{Colors.ENDC}")
     
     print("\nEnter the number to toggle/change, or press Enter to finish:")
     
     while True:
         try:
-            choice = input(f"{Colors.BOLD}{Colors.ORANGE}Choice (1-14 or Enter): {Colors.ENDC}").strip()
+            choice = input(f"{Colors.BOLD}{Colors.ORANGE}Choice (1-18 or Enter): {Colors.ENDC}").strip()
             
             if not choice:
                 break
@@ -488,14 +500,40 @@ def configure_script():
                 display_prefix = new_prefix or 'None'
                 print(f"Default database prefix set to: {Colors.CYAN}{display_prefix}{Colors.ENDC}")
             elif choice == 10:
+                new_url_name = input(f"Enter new default URL env var name [{config['defaults']['env_url_name']}]: ").strip()
+                if new_url_name:
+                    config['defaults']['env_url_name'] = new_url_name
+                    print(f"Default URL env var name set to: {Colors.CYAN}{new_url_name}{Colors.ENDC}")
+            elif choice == 11:
+                new_token_name = input(f"Enter new default token env var name [{config['defaults']['env_token_name']}]: ").strip()
+                if new_token_name:
+                    config['defaults']['env_token_name'] = new_token_name
+                    print(f"Default token env var name set to: {Colors.CYAN}{new_token_name}{Colors.ENDC}")
+            elif choice == 12:
+                config['seeding']['default_mode'] = 'on' if config['seeding']['default_mode'] == 'off' else 'off'
+                status = config['seeding']['default_mode']
+                print(f"Default seeding mode: {Colors.CYAN}{status}{Colors.ENDC}")
+            elif choice == 13:
+                config['seeding']['confirm_before_seed'] = not config['seeding']['confirm_before_seed']
+                status = "Enabled" if config['seeding']['confirm_before_seed'] else "Disabled"
+                print(f"Confirm before seed: {Colors.CYAN}{status}{Colors.ENDC}")
+            elif choice == 14:
+                new_drizzle_path = input(f"Enter default Drizzle config path [{config['seeding']['drizzle_config_path']}]: ").strip()
+                config['seeding']['drizzle_config_path'] = new_drizzle_path
+                print(f"Default Drizzle config path set to: {Colors.CYAN}{new_drizzle_path or 'None'}{Colors.ENDC}")
+            elif choice == 15:
+                new_sql_path = input(f"Enter default SQL migration path [{config['seeding']['sql_migration_path']}]: ").strip()
+                config['seeding']['sql_migration_path'] = new_sql_path
+                print(f"Default SQL migration path set to: {Colors.CYAN}{new_sql_path or 'None'}{Colors.ENDC}")
+            elif choice == 16:
                 config['display']['show_version_info'] = not config['display']['show_version_info']
                 status = "Enabled" if config['display']['show_version_info'] else "Disabled"
                 print(f"Show version info: {Colors.CYAN}{status}{Colors.ENDC}")
-            elif choice == 11:
+            elif choice == 17:
                 config['display']['use_colors'] = not config['display']['use_colors']
                 status = "Enabled" if config['display']['use_colors'] else "Disabled"
                 print(f"Use colors: {Colors.CYAN}{status}{Colors.ENDC}")
-            elif choice == 12:
+            elif choice == 18:
                 try:
                     new_width = int(input(f"Enter new content width [{config['display']['content_width']}]: ").strip())
                     if 40 <= new_width <= 120:  # Reasonable bounds
@@ -506,16 +544,256 @@ def configure_script():
                 except ValueError:
                     print_warning("Please enter a valid number.")
             else:
-                print_warning("Invalid choice. Please enter 1-12.")
+                print_warning("Invalid choice. Please enter 1-18.")
                 
         except ValueError:
-            print_warning("Invalid input. Please enter a number 1-5.")
+            print_warning("Invalid input. Please enter a number 1-18.")
         except KeyboardInterrupt:
             print_error("\nConfiguration cancelled.")
             return
     
     save_config(config)
 
+
+def run_drizzle_seeding(db_name, DATABASE_URL, auth_token):
+    """Run Drizzle seeding operations."""
+    print_section_divider("🌱 DRIZZLE SEEDING")
+    print_info("Checking for Drizzle configuration...")
+    
+    config = load_config()
+    
+    # Check if drizzle-kit is available
+    drizzle_check, _, drizzle_code = run_command("npx drizzle-kit --version")
+    if drizzle_code != 0:
+        print_error("drizzle-kit not found. Please install it first:")
+        print_info("npm install -g drizzle-kit")
+        return False
+    
+    print_success("Drizzle-kit found.")
+    
+    # Determine Drizzle config file path
+    drizzle_config_path = config['seeding']['drizzle_config_path']
+    if drizzle_config_path:
+        if not Path(drizzle_config_path).exists():
+            print_warning(f"Configured Drizzle config path '{drizzle_config_path}' not found. Searching common locations...")
+            drizzle_config_path = ""
+    
+    config_files = ["drizzle.config.ts", "drizzle.config.js", "drizzle.config.json"]
+    if drizzle_config_path:
+        config_files.insert(0, drizzle_config_path) # Prioritize configured path
+
+    config_found = False
+    for config_file in config_files:
+        if Path(config_file).exists():
+            print_success(f"Found Drizzle config: {Colors.CYAN}{config_file}{Colors.ENDC}")
+            config_found = True
+            break
+    
+    if not config_found:
+        print_warning("No Drizzle config file found. Looking for schema files...")
+        schema_patterns = ["**/schema.ts", "**/schema.js", "**/*schema*.ts", "**/*schema*.js"]
+        schema_found = False
+        for pattern in schema_patterns:
+            import glob
+            if glob.glob(pattern, recursive=True):
+                schema_found = True
+                break
+        
+        if not schema_found:
+            print_error("No Drizzle schema files found. Please ensure you have a proper Drizzle setup.")
+            return False
+    
+    # Ask user which operation to perform
+    print(f"\n{Colors.BOLD}{Colors.WHITE}Choose Drizzle operation:{Colors.ENDC}")
+    print(f"  1. {Colors.CYAN}drizzle-kit push{Colors.ENDC} - Push schema to database")
+    print(f"  2. {Colors.CYAN}drizzle-kit migrate{Colors.ENDC} - Run migrations")
+    print(f"  3. {Colors.CYAN}Both{Colors.ENDC} - Run push first, then migrate")
+    
+    try:
+        choice = input(f"{Colors.BOLD}{Colors.ORANGE}Select option (1-3): {Colors.ENDC}").strip()
+        
+        # Set environment variables for the operations
+        env_vars = os.environ.copy()
+        env_vars['DATABASE_URL'] = DATABASE_URL
+        env_vars['TURSO_AUTH_TOKEN'] = auth_token
+        
+        success = True
+        
+        if choice in ['1', '3']:
+            print_info("Running drizzle-kit push...")
+            push_output, push_error, push_code = run_command("npx drizzle-kit push")
+            if push_code == 0:
+                print_success("Drizzle push completed successfully!")
+                if push_output:
+                    print_info(f"Output: {push_output}")
+            else:
+                print_error(f"Drizzle push failed: {push_error}")
+                success = False
+        
+        if choice in ['2', '3'] and success:
+            print_info("Running drizzle-kit migrate...")
+            migrate_output, migrate_error, migrate_code = run_command("npx drizzle-kit migrate")
+            if migrate_code == 0:
+                print_success("Drizzle migrate completed successfully!")
+                if migrate_output:
+                    print_info(f"Output: {migrate_output}")
+            else:
+                print_error(f"Drizzle migrate failed: {migrate_error}")
+                success = False
+        
+        return success
+        
+    except KeyboardInterrupt:
+        print_info("\nDrizzle seeding cancelled.")
+        return False
+
+def run_sql_seeding(db_name):
+    """Run SQL file seeding operations."""
+    print_section_divider("📄 SQL SEEDING")
+    print_info("Looking for SQL migration files...")
+    
+    config = load_config()
+    sql_migration_path = config['seeding']['sql_migration_path']
+
+    sql_files = []
+    if sql_migration_path:
+        if Path(sql_migration_path).is_dir():
+            import glob
+            files = glob.glob(f"{sql_migration_path}/*.sql")
+            sql_files.extend(files)
+            if not sql_files:
+                print_warning(f"No SQL files found in configured path: {Colors.CYAN}{sql_migration_path}{Colors.ENDC}")
+        else:
+            print_warning(f"Configured SQL migration path '{sql_migration_path}' is not a directory. Searching common locations...")
+
+    # Look for SQL files in common directories if no specific path was configured or found
+    if not sql_files:
+        sql_patterns = [
+            "migrations/*.sql",
+            "db/migrations/*.sql",
+            "database/migrations/*.sql",
+            "sql/*.sql",
+            "*.sql"
+        ]
+        
+        for pattern in sql_patterns:
+            import glob
+            files = glob.glob(pattern, recursive=True)
+            sql_files.extend(files)
+    
+    if not sql_files:
+        print_warning("No SQL files found in common directories.")
+        try:
+            custom_path = input(f"{Colors.BOLD}{Colors.ORANGE}Enter path to SQL files (or Enter to skip): {Colors.ENDC}").strip()
+            if custom_path:
+                import glob
+                custom_files = glob.glob(f"{custom_path}/*.sql")
+                sql_files.extend(custom_files)
+        except KeyboardInterrupt:
+            print_info("\nSQL seeding cancelled.")
+            return False
+    
+    if not sql_files:
+        print_error("No SQL files found to apply.")
+        return False
+    
+    # Sort files to ensure proper order
+    sql_files.sort()
+    
+    print_success(f"Found {len(sql_files)} SQL file(s):")
+    for i, file in enumerate(sql_files, 1):
+        print(f"  {i}. {Colors.CYAN}{file}{Colors.ENDC}")
+    
+    try:
+        confirm = input(f"\n{Colors.BOLD}{Colors.ORANGE}Apply these SQL files to {db_name}? (y/N): {Colors.ENDC}").strip().lower()
+        if confirm != 'y':
+            print_info("SQL seeding cancelled.")
+            return False
+        
+        # Apply each SQL file using turso db shell
+        success_count = 0
+        for sql_file in sql_files:
+            print_info(f"Applying {Colors.CYAN}{sql_file}{Colors.ENDC}...")
+            try:
+                with open(sql_file, 'r') as f:
+                    sql_content = f.read()
+                
+                # Use turso db shell with the SQL content
+                shell_cmd = f'echo "{sql_content}" | turso db shell {db_name}'
+                output, error, code = run_command(shell_cmd)
+                
+                if code == 0:
+                    print_success(f"Applied {sql_file}")
+                    success_count += 1
+                else:
+                    print_error(f"Failed to apply {sql_file}: {error}")
+                    
+            except Exception as e:
+                print_error(f"Error reading {sql_file}: {e}")
+        
+        if success_count == len(sql_files):
+            print_success(f"All {success_count} SQL files applied successfully!")
+            return True
+        else:
+            print_warning(f"Applied {success_count}/{len(sql_files)} files successfully.")
+            return success_count > 0
+            
+    except KeyboardInterrupt:
+        print_info("\nSQL seeding cancelled.")
+        return False
+
+def run_interactive_seeding(db_name, DATABASE_URL, auth_token):
+    """Interactive seeding mode - let user choose."""
+    print_section_divider("🎯 INTERACTIVE SEEDING")
+    print_info("Choose your seeding method:")
+    
+    print(f"\n{Colors.BOLD}{Colors.WHITE}Available seeding options:{Colors.ENDC}")
+    print(f"  1. {Colors.CYAN}Drizzle{Colors.ENDC} - Run drizzle-kit push/migrate")
+    print(f"  2. {Colors.CYAN}SQL{Colors.ENDC} - Apply local SQL migration files")
+    print(f"  3. {Colors.CYAN}Both{Colors.ENDC} - Run Drizzle first, then SQL")
+    print(f"  4. {Colors.CYAN}Skip{Colors.ENDC} - Skip seeding")
+    
+    try:
+        choice = input(f"\n{Colors.BOLD}{Colors.ORANGE}Select option (1-4): {Colors.ENDC}").strip()
+        
+        if choice == '1':
+            return run_drizzle_seeding(db_name, DATABASE_URL, auth_token)
+        elif choice == '2':
+            return run_sql_seeding(db_name)
+        elif choice == '3':
+            drizzle_success = run_drizzle_seeding(db_name, DATABASE_URL, auth_token)
+            if drizzle_success:
+                return run_sql_seeding(db_name)
+            else:
+                print_warning("Skipping SQL seeding due to Drizzle failure.")
+                return False
+        elif choice == '4':
+            print_info("Seeding skipped.")
+            return True
+        else:
+            print_warning("Invalid choice. Skipping seeding.")
+            return True
+            
+    except KeyboardInterrupt:
+        print_info("\nSeeding cancelled.")
+        return True
+
+def handle_seeding(seed_mode, db_name, DATABASE_URL, auth_token):
+    """Handle seeding based on the provided mode."""
+    if not seed_mode:
+        return True  # No seeding requested
+    
+    print_info(f"Starting database seeding with mode: {Colors.CYAN}{seed_mode}{Colors.ENDC}")
+    
+    if seed_mode == 'drizzle':
+        return run_drizzle_seeding(db_name, DATABASE_URL, auth_token)
+    elif seed_mode == 'sql':
+        return run_sql_seeding(db_name)
+    elif seed_mode == 'interactive':
+        return run_interactive_seeding(db_name, DATABASE_URL, auth_token)
+    else:
+        print_error(f"Unknown seeding mode: {seed_mode}")
+        return False
 
 def post_completion_prompts(db_name, DATABASE_URL, auth_token):
     """Handle post-completion prompts based on configuration."""
@@ -974,6 +1252,16 @@ def main():
   {Colors.CYAN}python {script_name} --no-clipboard{Colors.ENDC}
     {Colors.GRAY}# Generate a new database but do not copy credentials to clipboard.{Colors.ENDC}
 
+{Colors.BOLD}{Colors.OKGREEN}Database Seeding:{Colors.ENDC}
+  {Colors.CYAN}python {script_name} --seed{Colors.ENDC}
+    {Colors.GRAY}# Generate database and prompt for seeding method (interactive mode).{Colors.ENDC}
+
+  {Colors.CYAN}python {script_name} --seed drizzle{Colors.ENDC}
+    {Colors.GRAY}# Generate database and run Drizzle migrations (drizzle-kit push/migrate).{Colors.ENDC}
+
+  {Colors.CYAN}python {script_name} --seed sql{Colors.ENDC}
+    {Colors.GRAY}# Generate database and apply local SQL migration files via Turso shell.{Colors.ENDC}
+
 {Colors.BOLD}{Colors.ORANGE}Configuration:{Colors.ENDC}
   {Colors.CYAN}python {script_name} --configure{Colors.ENDC}
     {Colors.GRAY}# Open interactive configuration menu to set preferences and disable prompts.{Colors.ENDC}
@@ -984,6 +1272,8 @@ def main():
 
   {Colors.CYAN}python {script_name} --delete-interactive{Colors.ENDC}
     {Colors.GRAY}# Show an interactive menu to select and delete any of your Turso databases.{Colors.ENDC}
+
+{Colors.BOLD}{Colors.GRAY}Note: The --seed flag replaces previous --migrate-* variants.{Colors.ENDC}
         """
     )
     parser.add_argument('--name', metavar='DB_NAME',
@@ -1000,6 +1290,9 @@ def main():
                        help='Custom name for the auth token environment variable. Default: TURSO_AUTH_TOKEN')
     parser.add_argument('--configure', action='store_true',
                        help='Open configuration menu to set preferences.')
+    parser.add_argument('--seed', nargs='?', const='interactive', 
+                       choices=['drizzle', 'sql', 'interactive'], metavar='MODE',
+                       help='Run database seeding after creation. MODE can be: drizzle (run drizzle-kit push/migrate), sql (apply local SQL files), or interactive (choose method). If no mode specified, falls back to configuration or prompts user.')
 
     delete_group = parser.add_argument_group(f'{Colors.BOLD}{Colors.FAIL}Deletion Options{Colors.ENDC} (use one at a time)')
     delete_group.add_argument('--delete-generation', action='store_true',
@@ -1202,6 +1495,14 @@ def main():
                 print_error(f"Could not write to {env_file_path}: {e}")
         else:
             print_info(f"To save credentials to a file, use: {Colors.BOLD}--overwrite FILENAME{Colors.ENDC}")
+
+        # Handle database seeding if requested
+        if args.seed:
+            seeding_success = handle_seeding(args.seed, db_name, DATABASE_URL, auth_token)
+            if seeding_success:
+                print_success("Database seeding completed successfully!")
+            else:
+                print_warning("Database seeding completed with some issues.")
 
         print_footer(db_name)
         

@@ -48,7 +48,7 @@ python3 generate-turso-db.py
 python3 generate-turso-db.py [-h] [--name DB_NAME] [--overwrite FILENAME]
                               [--no-clipboard] [--auto-reveal {on,off}]
                               [--env-url-name VAR_NAME] [--env-token-name VAR_NAME]
-                              [--configure] [--delete-generation] [--delete-interactive]
+                              [--configure] [--seed [MODE]] [--delete-generation] [--delete-interactive]
 ```
 
 ### Examples
@@ -83,13 +83,30 @@ python3 generate-turso-db.py --auto-reveal on
 python3 generate-turso-db.py --env-url-name CUSTOM_DB_URL --env-token-name CUSTOM_AUTH_TOKEN
 ```
 
+### Database Seeding
+
+| Option | Description |
+|--------|-------------|
+| `--seed [MODE]` | Run database seeding after creation. `MODE` can be: `drizzle` (run drizzle-kit push/migrate), `sql` (apply local SQL files), or `interactive` (choose method). If no mode is specified, it falls back to configuration or prompts the user. |
+
+```bash
+# Generate database and prompt for seeding method (interactive mode)
+python3 generate-turso-db.py --seed
+
+# Generate database and run Drizzle migrations
+python3 generate-turso-db.py --seed drizzle
+
+# Generate database and apply local SQL migration files
+python3 generate-turso-db.py --seed sql
+```
+
 ### Configuration
 
 > [!TIP]
 > For even easier access add this `alias create-turso="python3 ~/path/to/cloned/script/generate-turso-db.py` inside  your shell config."
 
 ```bash
-# Open interactive configuration menu to set preferences and disable prompts
+# Open interactive configuration menu to set preferences, including seeding defaults and prompt behaviors
 python3 generate-turso-db.py --configure
 ```
 
