@@ -8,6 +8,9 @@ import time
 import json
 from datetime import datetime
 from pathlib import Path
+import math
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 try:
     from rich.console import Console
     from rich.text import Text
@@ -979,96 +982,244 @@ def delete_last_generated_db():
     else:
         sys.exit(1) # Exit if deletion failed
 
+def get_database_details(db_name):
+    """Get detailed information about a database including size."""
+    show_output, show_error, show_code = run_command(f"turso db show {db_name}", timeout=30)
+    if show_code != 0:
+        return None
+    
+    # Extract size from output
+    size_match = re.search(r'Size:\s+([\d.]+\s*[KMGTP]?B)', show_output)
+    size = size_match.group(1) if size_match else "Unknown"
+    
+    return {"size": size}
+
 def interactive_delete():
-    """Provides an interactive UI to delete databases."""
+    """Enhanced interactive UI to delete databases with pagination and better selection."""
     print_section_divider("🗑️ Interactive Database Deletion")
     print_info("Fetching list of databases...")
 
-    output, error, code = run_command("turso db list --json")
+    # First, get the basic list of databases
+    output, error, code = run_command("turso db list")
     if code != 0:
         print_error("Could not fetch database list.")
         if error: print_error(f"Turso CLI Error: {error}")
         sys.exit(1)
 
-    try:
-        data = json.loads(output)
-        # The key might be 'databases' or 'dbs' depending on CLI version or if it's empty
-        databases = data.get("databases", data.get("dbs", []))
-    except (json.JSONDecodeError, KeyError) as e:
-        print_error("Could not parse the list of databases.")
-        print_info(f"Received output: {output}")
-        print_error(f"Parsing error: {e}")
-        sys.exit(1)
-
+    # Parse the table output to get database names
+    lines = output.strip().split('\n')
+    if len(lines) < 2:  # No databases
+        print_success("You have no databases to delete. All clear! ✨")
+        sys.exit(0)
+    
+    databases = []
+    # Skip header line
+    for line in lines[1:]:
+        parts = line.split()
+        if len(parts) >= 2:
+            db_name = parts[0]
+            db_group = parts[1] if len(parts) > 1 else "default"
+            databases.append({
+                "name": db_name,
+                "group": db_group,
+                "size": "Loading...",
+                "selected": False
+            })
+    
     if not databases:
         print_success("You have no databases to delete. All clear! ✨")
         sys.exit(0)
-
-    print_info("Select databases to delete by typing their numbers, separated by spaces.")
-    print_info(f"Example: '{Colors.ORANGE}1 3 4{Colors.ENDC}' to select databases 1, 3, and 4.")
-    print("")
-
-    for i, db_info in enumerate(databases):
-        # Turso CLI output for db name can vary (e.g., 'Name' or 'name')
-        db_name = db_info.get("Name", db_info.get("name", "N/A"))
-        db_region = db_info.get("Region", db_info.get("region", "N/A"))
-        print(f"  {Colors.BOLD}{Colors.WHITE}[{i+1}]{Colors.ENDC} {Colors.CYAN}{db_name}{Colors.ENDC} ({Colors.GRAY}Region: {db_region}{Colors.ENDC})")
-
-    print("")
-
-    try:
-        selection_str = input(f"\n{Colors.BOLD}{Colors.ORANGE}Enter numbers to delete (or press Enter to cancel): {Colors.ENDC}")
-        if not selection_str.strip():
-            print_info("Deletion cancelled by user.")
-            sys.exit(0)
-
-        selected_indices = []
-        for item in selection_str.split():
+    
+    print_info(f"Found {len(databases)} database(s). Loading details...")
+    
+    # Fetch detailed information for each database in parallel
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_db = {executor.submit(get_database_details, db["name"]): i 
+                       for i, db in enumerate(databases)}
+        
+        for future in as_completed(future_to_db):
+            idx = future_to_db[future]
             try:
-                selected_indices.append(int(item) - 1)
-            except ValueError:
-                print_warning(f"Invalid input '{item}' skipped. Please enter numbers only.")
-
-        dbs_to_delete_names = []
-        valid_selections = False
-        for i in selected_indices:
-            if 0 <= i < len(databases):
-                db_name_key = "Name" if "Name" in databases[i] else "name"
-                dbs_to_delete_names.append(databases[i][db_name_key])
-                valid_selections = True
+                details = future.result()
+                if details:
+                    databases[idx]["size"] = details["size"]
+                else:
+                    databases[idx]["size"] = "N/A"
+            except Exception:
+                databases[idx]["size"] = "Error"
+    
+    # Sort by name (you could add creation date if Turso API provides it)
+    databases.sort(key=lambda x: x["name"])
+    
+    # Pagination setup
+    page_size = 25
+    current_page = 0
+    total_pages = math.ceil(len(databases) / page_size)
+    
+    print_info("\nUse the following controls:")
+    print(f"  {Colors.CYAN}↑/↓{Colors.ENDC} or {Colors.CYAN}j/k{Colors.ENDC} - Navigate")
+    print(f"  {Colors.CYAN}SPACE{Colors.ENDC} - Toggle selection")
+    print(f"  {Colors.CYAN}a{Colors.ENDC} - Select all on page")
+    print(f"  {Colors.CYAN}d{Colors.ENDC} - Deselect all on page")
+    print(f"  {Colors.CYAN}n/p{Colors.ENDC} - Next/Previous page")
+    print(f"  {Colors.CYAN}ENTER{Colors.ENDC} - Confirm deletion")
+    print(f"  {Colors.CYAN}q{Colors.ENDC} or {Colors.CYAN}ESC{Colors.ENDC} - Cancel")
+    
+    current_index = 0
+    
+    def display_page():
+        """Display current page of databases."""
+        # Clear screen and redraw
+        os.system('clear' if os.name == 'posix' else 'cls')
+        print_section_divider("🗑️ Interactive Database Deletion")
+        
+        start_idx = current_page * page_size
+        end_idx = min(start_idx + page_size, len(databases))
+        
+        # Header
+        print(f"\n{Colors.BOLD}{Colors.WHITE}Page {current_page + 1}/{total_pages}{Colors.ENDC}")
+        print(f"{Colors.GRAY}{'─' * 70}{Colors.ENDC}")
+        print(f"{Colors.BOLD}{Colors.WHITE}{'':3} {'Name':30} {'Group':15} {'Size':10}{Colors.ENDC}")
+        print(f"{Colors.GRAY}{'─' * 70}{Colors.ENDC}")
+        
+        # Display databases
+        for i in range(start_idx, end_idx):
+            db = databases[i]
+            is_current = (i == current_index)
+            is_selected = db["selected"]
+            
+            # Selection indicator
+            selection = "[X]" if is_selected else "[ ]"
+            
+            # Highlight current line
+            if is_current:
+                line_color = Colors.OKGREEN if is_selected else Colors.YELLOW
+                print(f"{line_color}▶ {selection} {db['name']:30} {db['group']:15} {db['size']:10}{Colors.ENDC}")
             else:
-                print_warning(f"Invalid selection number: {i+1}. Skipping.")
-
-        if not valid_selections or not dbs_to_delete_names:
-            print_error("No valid databases selected for deletion. Aborting.")
-            sys.exit(1)
-
-        print_section_divider("🚨 CONFIRM DELETION")
-        print_warning("You are about to PERMANENTLY delete the following databases:")
-        for db_name_to_delete in dbs_to_delete_names:
-            print(f"  - {Colors.BOLD}{Colors.FAIL}{db_name_to_delete}{Colors.ENDC}")
-
-        confirm = input(f"\n{Colors.BOLD}{Colors.ORANGE}Are you absolutely sure? This action cannot be undone. (yes/N): {Colors.ENDC}").strip().lower()
-
-        if confirm == 'yes':
-            print_info("Proceeding with deletion...")
-            all_successful = True
-            for db_name_to_delete in dbs_to_delete_names:
-                if not delete_database(db_name_to_delete):
-                    all_successful = False # Mark if any deletion fails
-            if all_successful:
-                print_success("Selected databases have been processed for deletion.")
-            else:
-                print_warning("Some databases could not be deleted. Check messages above.")
-        else:
-            print_info("Deletion aborted by user.")
-
-    except ValueError: # Handles non-integer input if not caught by the loop
-        print_error("Invalid input. Please enter numbers separated by spaces.")
-        sys.exit(1)
+                color = Colors.CYAN if is_selected else Colors.WHITE
+                print(f"  {selection} {color}{db['name']:30}{Colors.ENDC} {Colors.GRAY}{db['group']:15} {db['size']:10}{Colors.ENDC}")
+        
+        # Footer with selected count
+        selected_count = sum(1 for db in databases if db["selected"])
+        print(f"{Colors.GRAY}{'─' * 70}{Colors.ENDC}")
+        print(f"{Colors.BOLD}{Colors.ORANGE}Selected: {selected_count} database(s){Colors.ENDC}")
+        
+        if selected_count > 0:
+            print(f"\n{Colors.WARNING}Press ENTER to delete selected databases{Colors.ENDC}")
+    
+    # Enable raw input mode for single keypress detection
+    import termios, tty
+    old_settings = termios.tcgetattr(sys.stdin)
+    
+    try:
+        tty.setraw(sys.stdin.fileno())
+        
+        while True:
+            display_page()
+            
+            # Read single character
+            char = sys.stdin.read(1)
+            
+            if char == '\x1b':  # ESC sequence
+                next_char = sys.stdin.read(1)
+                if next_char == '[':  # Arrow keys
+                    arrow = sys.stdin.read(1)
+                    if arrow == 'A':  # Up arrow
+                        if current_index > 0:
+                            current_index -= 1
+                            if current_index < current_page * page_size:
+                                current_page -= 1
+                    elif arrow == 'B':  # Down arrow
+                        if current_index < len(databases) - 1:
+                            current_index += 1
+                            if current_index >= (current_page + 1) * page_size:
+                                current_page += 1
+                else:
+                    # Just ESC pressed - quit
+                    break
+            
+            elif char == ' ':  # Space - toggle selection
+                databases[current_index]["selected"] = not databases[current_index]["selected"]
+            
+            elif char == 'j' or char == 'J':  # Move down
+                if current_index < len(databases) - 1:
+                    current_index += 1
+                    if current_index >= (current_page + 1) * page_size:
+                        current_page += 1
+            
+            elif char == 'k' or char == 'K':  # Move up
+                if current_index > 0:
+                    current_index -= 1
+                    if current_index < current_page * page_size:
+                        current_page -= 1
+            
+            elif char == 'n' or char == 'N':  # Next page
+                if current_page < total_pages - 1:
+                    current_page += 1
+                    current_index = current_page * page_size
+            
+            elif char == 'p' or char == 'P':  # Previous page
+                if current_page > 0:
+                    current_page -= 1
+                    current_index = current_page * page_size
+            
+            elif char == 'a' or char == 'A':  # Select all on page
+                start_idx = current_page * page_size
+                end_idx = min(start_idx + page_size, len(databases))
+                for i in range(start_idx, end_idx):
+                    databases[i]["selected"] = True
+            
+            elif char == 'd' or char == 'D':  # Deselect all on page
+                start_idx = current_page * page_size
+                end_idx = min(start_idx + page_size, len(databases))
+                for i in range(start_idx, end_idx):
+                    databases[i]["selected"] = False
+            
+            elif char == '\r' or char == '\n':  # Enter - confirm deletion
+                selected_dbs = [db for db in databases if db["selected"]]
+                if selected_dbs:
+                    # Restore terminal settings temporarily for input
+                    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+                    
+                    os.system('clear' if os.name == 'posix' else 'cls')
+                    print_section_divider("🚨 CONFIRM DELETION")
+                    print_warning("You are about to PERMANENTLY delete the following databases:")
+                    for db in selected_dbs:
+                        print(f"  - {Colors.BOLD}{Colors.FAIL}{db['name']}{Colors.ENDC} (Size: {db['size']})")
+                    
+                    confirm = input(f"\n{Colors.BOLD}{Colors.ORANGE}Type 'DELETE' to confirm deletion: {Colors.ENDC}").strip()
+                    
+                    if confirm == 'DELETE':
+                        print_info("\nProceeding with deletion...")
+                        all_successful = True
+                        for db in selected_dbs:
+                            if not delete_database(db['name']):
+                                all_successful = False
+                        
+                        if all_successful:
+                            print_success("\nAll selected databases have been deleted.")
+                        else:
+                            print_warning("\nSome databases could not be deleted. Check messages above.")
+                        
+                        input(f"\n{Colors.BOLD}{Colors.GRAY}Press Enter to exit...{Colors.ENDC}")
+                        break
+                    else:
+                        print_info("\nDeletion cancelled.")
+                        # Re-enable raw mode
+                        tty.setraw(sys.stdin.fileno())
+            
+            elif char == 'q' or char == 'Q':  # Quit
+                break
+            
+            elif char == '\x03':  # Ctrl+C
+                raise KeyboardInterrupt
+    
     except KeyboardInterrupt:
-        print_error("\nOperation cancelled by user.")
-        sys.exit(1)
+        print_error("\n\nOperation cancelled by user.")
+    finally:
+        # Restore terminal settings
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+        print("\n")  # Ensure we're on a new line
 
 
 def check_dependencies():
