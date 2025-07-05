@@ -794,14 +794,7 @@ def interactive_delete():
 
 
 def check_dependencies():
-    """
-    Checks for required dependencies (Turso CLI, Python 3.6+, clipboard support) and reports missing or limited components with installation guidance.
-    
-    Prints detailed status for each dependency, offers to generate an installation script for missing items, and provides platform-specific clipboard troubleshooting if needed.
-    
-    Returns:
-        bool: True if clipboard functionality is available, False otherwise. Exits the script if critical dependencies are missing.
-    """
+    """Check if required dependencies are installed with comprehensive safety guards."""
     print_step(1, 6, "Checking system dependencies...")
     
     missing_deps = []
@@ -880,9 +873,7 @@ def check_dependencies():
     return clipboard_available
 
 def get_clipboard_solutions():
-    """
-    Return a list of suggested solutions for enabling clipboard functionality based on the current operating system.
-    """
+    """Get platform-specific clipboard solutions."""
     import platform
     system = platform.system().lower()
     
@@ -906,12 +897,7 @@ def get_clipboard_solutions():
         return ["Please check your system's clipboard manager"]
 
 def create_installation_script(missing_deps):
-    """
-    Generate a platform-specific installation script to help users install missing dependencies required by the Turso DB Creator CLI tool.
-    
-    Parameters:
-        missing_deps (list): A list of dictionaries describing missing dependencies, each containing at least 'name' and 'install_cmd' keys.
-    """
+    """Create a platform-specific installation script."""
     import platform
     system = platform.system().lower()
     
@@ -973,11 +959,6 @@ def create_installation_script(missing_deps):
 
 
 def main():
-    """
-    Main entry point for the Turso database automation script.
-    
-    Handles command-line argument parsing, configuration loading, dependency checks, Turso CLI authentication, database creation, credential retrieval, and interactive user prompts. Displays credentials with masking and optional clipboard copying, supports environment file updates, and provides interactive options for configuration and database deletion. Exits gracefully on errors or user interruption.
-    """
     script_name = os.path.basename(sys.argv[0])
     parser = argparse.ArgumentParser(
         description=f'{Colors.BOLD}{Colors.ORANGE}Turso Database & Token Generator{Colors.ENDC} - Automate Turso DB tasks.',
