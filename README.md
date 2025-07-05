@@ -41,7 +41,7 @@ python3 generate-turso-db.py
 | Option | Description |
 |--------|-------------|
 | `--delete-generation` | Delete the last database created by THIS script (uses state file). |
-| `--delete-interactive` | Interactively select and delete any of your Turso databases. |
+| `--delete-interactive` | Interactively select and delete any of your Turso databases with enhanced UI. |
 
 #### Full Usage Syntax
 ```bash
@@ -119,6 +119,24 @@ python3 generate-turso-db.py --delete-generation
 # Show an interactive menu to select and delete any of your Turso databases
 python3 generate-turso-db.py --delete-interactive
 ```
+
+#### Enhanced Interactive Deletion Features
+
+The `--delete-interactive` option now provides an enhanced UI with:
+
+- **Pagination**: View 25 databases per page
+- **Keyboard Navigation**:
+  - `↑/↓` or `j/k` - Navigate through databases
+  - `SPACE` - Toggle selection on current database
+  - `a` - Select all databases on current page
+  - `d` - Deselect all databases on current page
+  - `n/p` - Navigate to next/previous page
+  - `ENTER` - Confirm deletion of selected databases
+  - `q` or `ESC` - Cancel and exit
+- **Database Details**: Shows database name, group, and size
+- **Visual Feedback**: Selected databases are highlighted
+- **Safety**: Requires typing 'DELETE' to confirm deletion
+- **Performance**: Loads database details in parallel for faster response
 
 ## Requirements
 
