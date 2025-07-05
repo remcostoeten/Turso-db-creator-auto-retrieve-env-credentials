@@ -36,19 +36,17 @@ python3 generate-turso-db.py
 | `--configure` | Open configuration menu to set preferences. |
 
 #### 🗑️ Deletion Options
-> **Note:** Use only one deletion option at a time.
 
 | Option | Description |
-|--------|-------------|
+|--------|--------------|
 | `--delete-generation` | Delete the last database created by THIS script (uses state file). |
-| `--delete-interactive` | Interactively select and delete any of your Turso databases with enhanced UI. |
 
 #### Full Usage Syntax
 ```bash
 python3 generate-turso-db.py [-h] [--name DB_NAME] [--overwrite FILENAME]
                               [--no-clipboard] [--auto-reveal {on,off}]
                               [--env-url-name VAR_NAME] [--env-token-name VAR_NAME]
-                              [--configure] [--seed [MODE]] [--delete-generation] [--delete-interactive]
+                              [--configure] [--seed [MODE]] [--delete-generation]
 ```
 
 ### Examples
@@ -115,28 +113,11 @@ python3 generate-turso-db.py --configure
 ```bash
 # Delete the last database specifically created by this script (if tracked)
 python3 generate-turso-db.py --delete-generation
-
-# Show an interactive menu to select and delete any of your Turso databases
-python3 generate-turso-db.py --delete-interactive
 ```
 
-#### Enhanced Interactive Deletion Features
+#### Post-Creation Deletion
 
-The `--delete-interactive` option now provides an enhanced UI with:
-
-- **Pagination**: View 25 databases per page
-- **Keyboard Navigation**:
-  - `↑/↓` or `j/k` - Navigate through databases
-  - `SPACE` - Toggle selection on current database
-  - `a` - Select all databases on current page
-  - `d` - Deselect all databases on current page
-  - `n/p` - Navigate to next/previous page
-  - `ENTER` - Confirm deletion of selected databases
-  - `q` or `ESC` - Cancel and exit
-- **Database Details**: Shows database name, group, and size
-- **Visual Feedback**: Selected databases are highlighted
-- **Safety**: Requires typing 'DELETE' to confirm deletion
-- **Performance**: Loads database details in parallel for faster response
+After creating a database, the script offers a post-completion prompt to delete the database if needed. This provides a safe way to clean up test databases immediately after creation.
 
 ## Requirements
 

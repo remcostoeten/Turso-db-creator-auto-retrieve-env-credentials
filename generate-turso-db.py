@@ -342,7 +342,7 @@ def save_last_generated_db(db_name):
     """Saves the last generated database name to a state file."""
     try:
         with open(STATE_FILE, "w") as f:
-            json.dump({"last_generated_db": db_name}, f)
+            json.dump({"last_database_name": db_name}, f)
     except Exception as e:
         print_warning(f"Could not save state file: {e}")
 
@@ -353,7 +353,7 @@ def read_last_generated_db():
     try:
         with open(STATE_FILE, "r") as f:
             data = json.load(f)
-            return data.get("last_generated_db")
+            return data.get("last_database_name")
     except (json.JSONDecodeError, IOError) as e:
         print_warning(f"Could not read state file: {e}")
         # Optionally, delete corrupted state file
@@ -925,25 +925,35 @@ def check_database_exists(db_name):
     """Check if a database with the given name already exists."""
     print_info(f"Checking if database '{Colors.CYAN}{db_name}{Colors.ENDC}' already exists...")
     
-    output, error, code = run_command("turso db list --json")
+    output, error, code = run_command("turso db list")
     if code != 0:
         print_warning("Could not fetch database list for existence check.")
         if error: print_warning(f"Turso CLI Error: {error}")
         return False  # Assume it doesn't exist if we can't check
     
-    try:
-        data = json.loads(output)
-        databases = data.get("databases", data.get("dbs", []))
+    # Parse the table output to check for database name
+    lines = output.strip().split('\n')
+    if len(lines) < 2:  # No databases
+        return False
+    
+    # Skip header line and check each database entry
+    for line in lines[1:]:
+        line = line.strip()
+        if not line:  # Skip empty lines
+            continue
         
-        for db_info in databases:
-            existing_name = db_info.get("Name", db_info.get("name", ""))
+        # Skip duplicate header lines that sometimes appear
+        if line.startswith("NAME") and "GROUP" in line and "URL" in line:
+            continue
+            
+        # Split by whitespace and get the first column (database name)
+        parts = line.split()
+        if len(parts) >= 1:
+            existing_name = parts[0]
             if existing_name == db_name:
                 return True
-        return False
-        
-    except (json.JSONDecodeError, KeyError) as e:
-        print_warning(f"Could not parse database list: {e}")
-        return False  # Assume it doesn't exist if we can't parse
+    
+    return False
 
 def delete_database(db_name):
     """Deletes a Turso database."""
@@ -982,6 +992,114 @@ def delete_last_generated_db():
     else:
         sys.exit(1) # Exit if deletion failed
 
+def fetch_all_database_details(lazy=False, page_size=25):
+    """Fetch details for all databases with optional lazy loading."""
+    print_info("Fetching database list...")
+    output, error, code = run_command("turso db list")
+    if code != 0:
+        print_error("Failed to fetch database list.")
+        if error: print_error(f"Turso CLI Error: {error}")
+        return []
+    
+    # Parse the table output to get database names
+    lines = output.strip().split('\n')
+    if len(lines) < 2:  # No databases (just header or empty)
+        print_warning("No databases found.")
+        return []
+    
+    db_list = []
+    # Skip header line and parse each database entry
+    for line in lines[1:]:
+        line = line.strip()
+        if not line:  # Skip empty lines
+            continue
+        
+        # Skip duplicate header lines that sometimes appear
+        if line.startswith("NAME") and "GROUP" in line and "URL" in line:
+            continue
+            
+        # Split by whitespace - Turso output format is: NAME GROUP URL
+        parts = line.split()
+        if len(parts) >= 3:  # We need at least name, group, and URL
+            db_name = parts[0]
+            db_group = parts[1]
+            
+            db_list.append({
+                "name": db_name,
+                "selected": False,
+                "group": db_group,
+                "size": "Loading...",
+                "details_loaded": False
+            })
+    
+    if not db_list:
+        print_warning("No databases found.")
+        return []
+    
+    print_info(f"Found {Colors.CYAN}{len(db_list)}{Colors.ENDC} databases.")
+    
+    if not lazy:
+        # Load all details at once (original behavior)
+        print_info("Loading database details...")
+        load_database_details_batch(db_list, 0, len(db_list))
+    else:
+        # Only load details for the first page
+        print_info(f"Loading details for first {page_size} databases...")
+        load_database_details_batch(db_list, 0, min(page_size, len(db_list)))
+    
+    return db_list
+
+def load_database_details_batch(db_list, start_idx, end_idx):
+    """Load database details for a specific batch of databases."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
+    batch = db_list[start_idx:end_idx]
+    unloaded = [db for db in batch if not db.get("details_loaded", False)]
+    
+    if not unloaded:
+        return  # All details already loaded
+    
+    def fetch_db_details(db_data):
+        if db_data.get("details_loaded", False):
+            return db_data
+            
+        name = db_data["name"]
+        output, error, code = run_command(f"turso db show {name}")
+        if code == 0:
+            try:
+                # Parse the text output to extract size
+                size_match = re.search(r'Size:\s+([\d.]+\s*[KMGTP]?B)', output)
+                size = size_match.group(1) if size_match else "Unknown"
+                
+                # Parse group if available in output
+                group_match = re.search(r'Group:\s+(\w+)', output)
+                group = group_match.group(1) if group_match else db_data.get("group", "default")
+                
+                db_data["group"] = group
+                db_data["size"] = size
+                db_data["details_loaded"] = True
+            except Exception as e:
+                db_data["group"] = db_data.get("group", "Error")
+                db_data["size"] = "Error"
+                db_data["details_loaded"] = True
+        else:
+            db_data["group"] = db_data.get("group", "Error")
+            db_data["size"] = "Error"
+            db_data["details_loaded"] = True
+        return db_data
+    
+    # Use thread pool to fetch details in parallel
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(fetch_db_details, db): db for db in unloaded}
+        
+        completed = 0
+        for future in as_completed(futures):
+            completed += 1
+            # Update progress
+            print(f"\r{Colors.GRAY}Loading: [{completed}/{len(unloaded)}]{Colors.ENDC}", end='', flush=True)
+    
+    print("\r" + " " * 50 + "\r", end='')  # Clear progress line
+
 def get_database_details(db_name):
     """Get detailed information about a database including size."""
     show_output, show_error, show_code = run_command(f"turso db show {db_name}", timeout=30)
@@ -994,68 +1112,18 @@ def get_database_details(db_name):
     
     return {"size": size}
 
-def interactive_delete():
-    """Enhanced interactive UI to delete databases with pagination and better selection."""
-    print_section_divider("🗑️ Interactive Database Deletion")
-    print_info("Fetching list of databases...")
+    """Interactive deletion with lazy loading support."""
+    databases = fetch_all_database_details(lazy=True, page_size=25)
 
-    # First, get the basic list of databases
-    output, error, code = run_command("turso db list")
-    if code != 0:
-        print_error("Could not fetch database list.")
-        if error: print_error(f"Turso CLI Error: {error}")
-        sys.exit(1)
-
-    # Parse the table output to get database names
-    lines = output.strip().split('\n')
-    if len(lines) < 2:  # No databases
-        print_success("You have no databases to delete. All clear! ✨")
-        sys.exit(0)
-    
-    databases = []
-    # Skip header line
-    for line in lines[1:]:
-        parts = line.split()
-        if len(parts) >= 2:
-            db_name = parts[0]
-            db_group = parts[1] if len(parts) > 1 else "default"
-            databases.append({
-                "name": db_name,
-                "group": db_group,
-                "size": "Loading...",
-                "selected": False
-            })
-    
     if not databases:
-        print_success("You have no databases to delete. All clear! ✨")
-        sys.exit(0)
-    
-    print_info(f"Found {len(databases)} database(s). Loading details...")
-    
-    # Fetch detailed information for each database in parallel
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        future_to_db = {executor.submit(get_database_details, db["name"]): i 
-                       for i, db in enumerate(databases)}
-        
-        for future in as_completed(future_to_db):
-            idx = future_to_db[future]
-            try:
-                details = future.result()
-                if details:
-                    databases[idx]["size"] = details["size"]
-                else:
-                    databases[idx]["size"] = "N/A"
-            except Exception:
-                databases[idx]["size"] = "Error"
-    
-    # Sort by name (you could add creation date if Turso API provides it)
-    databases.sort(key=lambda x: x["name"])
-    
+        print_warning("No databases available to delete.")
+        return
+
     # Pagination setup
     page_size = 25
     current_page = 0
     total_pages = math.ceil(len(databases) / page_size)
-    
+
     print_info("\nUse the following controls:")
     print(f"  {Colors.CYAN}↑/↓{Colors.ENDC} or {Colors.CYAN}j/k{Colors.ENDC} - Navigate")
     print(f"  {Colors.CYAN}SPACE{Colors.ENDC} - Toggle selection")
@@ -1064,62 +1132,78 @@ def interactive_delete():
     print(f"  {Colors.CYAN}n/p{Colors.ENDC} - Next/Previous page")
     print(f"  {Colors.CYAN}ENTER{Colors.ENDC} - Confirm deletion")
     print(f"  {Colors.CYAN}q{Colors.ENDC} or {Colors.CYAN}ESC{Colors.ENDC} - Cancel")
-    
+
     current_index = 0
-    
+
     def display_page():
-        """Display current page of databases."""
-        # Clear screen and redraw
-        os.system('clear' if os.name == 'posix' else 'cls')
-        print_section_divider("🗑️ Interactive Database Deletion")
-        
+        # Load details for current page if not already loaded
         start_idx = current_page * page_size
         end_idx = min(start_idx + page_size, len(databases))
-        
+        load_database_details_batch(databases, start_idx, end_idx)
+
+        os.system('clear' if os.name == 'posix' else 'cls')
+        print_section_divider("🗑️  INTERACTIVE DATABASE DELETION")
+
+        start_idx = current_page * page_size
+        end_idx = min(start_idx + page_size, len(databases))
+
         # Header
-        print(f"\n{Colors.BOLD}{Colors.WHITE}Page {current_page + 1}/{total_pages}{Colors.ENDC}")
-        print(f"{Colors.GRAY}{'─' * 70}{Colors.ENDC}")
-        print(f"{Colors.BOLD}{Colors.WHITE}{'':3} {'Name':30} {'Group':15} {'Size':10}{Colors.ENDC}")
-        print(f"{Colors.GRAY}{'─' * 70}{Colors.ENDC}")
-        
+        print(f"\n{Colors.BOLD}{Colors.WHITE}Page {current_page + 1}/{total_pages} - {len(databases)} total databases{Colors.ENDC}")
+        print(f"{Colors.GRAY}{'─' * 80}{Colors.ENDC}")
+        print(f"{Colors.BOLD}{Colors.WHITE}{'':4} {'Database Name':<25} {'Group':<12} {'Size':<10}{Colors.ENDC}")
+        print(f"{Colors.GRAY}{'─' * 80}{Colors.ENDC}")
+
         # Display databases
         for i in range(start_idx, end_idx):
             db = databases[i]
             is_current = (i == current_index)
             is_selected = db["selected"]
-            
+
             # Selection indicator
-            selection = "[X]" if is_selected else "[ ]"
+            selection = "[✓]" if is_selected else "[ ]"
             
-            # Highlight current line
+            # Truncate long names if necessary
+            db_name = db['name'][:24] if len(db['name']) > 24 else db['name']
+            db_group = db['group'][:11] if len(db['group']) > 11 else db['group']
+            db_size = db['size'][:9] if len(db['size']) > 9 else db['size']
+
+            # Format the line
             if is_current:
-                line_color = Colors.OKGREEN if is_selected else Colors.YELLOW
-                print(f"{line_color}▶ {selection} {db['name']:30} {db['group']:15} {db['size']:10}{Colors.ENDC}")
+                # Current selection - highlight entire line
+                if is_selected:
+                    print(f"{Colors.OKGREEN}▶ {selection} {db_name:<25} {db_group:<12} {db_size:<10}{Colors.ENDC}")
+                else:
+                    print(f"{Colors.YELLOW}▶ {selection} {db_name:<25} {db_group:<12} {db_size:<10}{Colors.ENDC}")
             else:
-                color = Colors.CYAN if is_selected else Colors.WHITE
-                print(f"  {selection} {color}{db['name']:30}{Colors.ENDC} {Colors.GRAY}{db['group']:15} {db['size']:10}{Colors.ENDC}")
-        
-        # Footer with selected count
+                # Regular line
+                if is_selected:
+                    print(f"  {Colors.CYAN}{selection} {db_name:<25} {db_group:<12} {db_size:<10}{Colors.ENDC}")
+                else:
+                    print(f"  {selection} {db_name:<25} {Colors.GRAY}{db_group:<12} {db_size:<10}{Colors.ENDC}")
+
+        # Footer with selected count and instructions
         selected_count = sum(1 for db in databases if db["selected"])
-        print(f"{Colors.GRAY}{'─' * 70}{Colors.ENDC}")
+        print(f"{Colors.GRAY}{'─' * 80}{Colors.ENDC}")
         print(f"{Colors.BOLD}{Colors.ORANGE}Selected: {selected_count} database(s){Colors.ENDC}")
         
         if selected_count > 0:
-            print(f"\n{Colors.WARNING}Press ENTER to delete selected databases{Colors.ENDC}")
-    
+            print(f"\n{Colors.WARNING}⚠️  Press ENTER to delete {selected_count} selected database(s){Colors.ENDC}")
+        else:
+            print(f"\n{Colors.GRAY}Use SPACE to select databases, ENTER to delete selected{Colors.ENDC}")
+
     # Enable raw input mode for single keypress detection
     import termios, tty
     old_settings = termios.tcgetattr(sys.stdin)
-    
+
     try:
         tty.setraw(sys.stdin.fileno())
-        
+
         while True:
             display_page()
-            
+
             # Read single character
             char = sys.stdin.read(1)
-            
+
             if char == '\x1b':  # ESC sequence
                 next_char = sys.stdin.read(1)
                 if next_char == '[':  # Arrow keys
@@ -1137,83 +1221,88 @@ def interactive_delete():
                 else:
                     # Just ESC pressed - quit
                     break
-            
+
             elif char == ' ':  # Space - toggle selection
                 databases[current_index]["selected"] = not databases[current_index]["selected"]
-            
+
             elif char == 'j' or char == 'J':  # Move down
                 if current_index < len(databases) - 1:
                     current_index += 1
                     if current_index >= (current_page + 1) * page_size:
                         current_page += 1
-            
+
             elif char == 'k' or char == 'K':  # Move up
                 if current_index > 0:
                     current_index -= 1
                     if current_index < current_page * page_size:
                         current_page -= 1
-            
+
             elif char == 'n' or char == 'N':  # Next page
                 if current_page < total_pages - 1:
                     current_page += 1
                     current_index = current_page * page_size
-            
+                    # Pre-load next page details
+                    next_start = (current_page + 1) * page_size
+                    if next_start < len(databases):
+                        next_end = min(next_start + page_size, len(databases))
+                        load_database_details_batch(databases, next_start, next_end)
+
             elif char == 'p' or char == 'P':  # Previous page
                 if current_page > 0:
                     current_page -= 1
                     current_index = current_page * page_size
-            
+
             elif char == 'a' or char == 'A':  # Select all on page
                 start_idx = current_page * page_size
                 end_idx = min(start_idx + page_size, len(databases))
                 for i in range(start_idx, end_idx):
                     databases[i]["selected"] = True
-            
+
             elif char == 'd' or char == 'D':  # Deselect all on page
                 start_idx = current_page * page_size
                 end_idx = min(start_idx + page_size, len(databases))
                 for i in range(start_idx, end_idx):
                     databases[i]["selected"] = False
-            
+
             elif char == '\r' or char == '\n':  # Enter - confirm deletion
                 selected_dbs = [db for db in databases if db["selected"]]
                 if selected_dbs:
                     # Restore terminal settings temporarily for input
                     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-                    
+
                     os.system('clear' if os.name == 'posix' else 'cls')
                     print_section_divider("🚨 CONFIRM DELETION")
                     print_warning("You are about to PERMANENTLY delete the following databases:")
                     for db in selected_dbs:
                         print(f"  - {Colors.BOLD}{Colors.FAIL}{db['name']}{Colors.ENDC} (Size: {db['size']})")
-                    
+
                     confirm = input(f"\n{Colors.BOLD}{Colors.ORANGE}Type 'DELETE' to confirm deletion: {Colors.ENDC}").strip()
-                    
+
                     if confirm == 'DELETE':
                         print_info("\nProceeding with deletion...")
                         all_successful = True
                         for db in selected_dbs:
                             if not delete_database(db['name']):
                                 all_successful = False
-                        
+
                         if all_successful:
                             print_success("\nAll selected databases have been deleted.")
                         else:
                             print_warning("\nSome databases could not be deleted. Check messages above.")
-                        
+
                         input(f"\n{Colors.BOLD}{Colors.GRAY}Press Enter to exit...{Colors.ENDC}")
                         break
                     else:
                         print_info("\nDeletion cancelled.")
                         # Re-enable raw mode
                         tty.setraw(sys.stdin.fileno())
-            
+
             elif char == 'q' or char == 'Q':  # Quit
                 break
-            
+
             elif char == '\x03':  # Ctrl+C
                 raise KeyboardInterrupt
-    
+
     except KeyboardInterrupt:
         print_error("\n\nOperation cancelled by user.")
     finally:
@@ -1448,8 +1537,6 @@ def main():
     delete_group = parser.add_argument_group(f'{Colors.BOLD}{Colors.FAIL}Deletion Options{Colors.ENDC} (use one at a time)')
     delete_group.add_argument('--delete-generation', action='store_true',
                               help='Delete the last database created by THIS script (uses state file).')
-    delete_group.add_argument('--delete-interactive', action='store_true',
-                              help='Interactively select and delete any of your Turso databases.')
 
     args = parser.parse_args()
     
@@ -1473,13 +1560,51 @@ def main():
     CONTENT_WIDTH = config['display']['content_width']
 
     if args.delete_generation:
-        os.system('clear' if os.name == 'posix' else 'cls') # Clear screen for focused output
-        delete_last_generated_db()
+        print_section_divider("🗑️  DELETE LAST GENERATION")
+        if STATE_FILE.exists():
+            try:
+                with open(STATE_FILE, 'r') as f:
+                    state = json.load(f)
+                    last_db_name = state.get('last_database_name')
+                    if last_db_name:
+                        if delete_database(last_db_name):
+                            print_success(f"Database '{last_db_name}' deleted successfully!")
+                            STATE_FILE.unlink(missing_ok=True)
+                            print_info("State file cleared.")
+                        else:
+                            print_error(f"Failed to delete database '{last_db_name}'.")
+                    else:
+                        print_warning("No database name found in state file.")
+            except (json.JSONDecodeError, KeyError) as e:
+                print_error(f"Could not read state file: {e}")
+        else:
+            print_warning("No previous generation found (state file doesn't exist).")
         sys.exit(0)
 
-    if args.delete_interactive:
-        os.system('clear' if os.name == 'posix' else 'cls')
-        interactive_delete()
+    if args.delete:
+        print_section_divider("🗑️  DELETE DATABASE")
+        # Handle comma-separated list of databases
+        db_names = [name.strip() for name in args.delete.split(',')]
+
+        if len(db_names) == 1:
+            # Single database deletion
+            if delete_database(db_names[0]):
+                print_success(f"Database '{db_names[0]}' deleted successfully!")
+            else:
+                print_error(f"Failed to delete database '{db_names[0]}'.")
+        else:
+            # Multiple database deletion
+            print_info(f"Deleting {len(db_names)} databases...")
+            success_count = 0
+            for db_name in db_names:
+                if delete_database(db_name):
+                    success_count += 1
+                    print_success(f"✓ Deleted: {db_name}")
+                else:
+                    print_error(f"✗ Failed: {db_name}")
+
+            print_info(f"\nDeleted {success_count}/{len(db_names)} databases.")
+
         sys.exit(0)
 
     if args.configure:
@@ -1525,7 +1650,12 @@ def main():
             sys.exit(1)
         db_name = db_name_match.group(1)
         print_success(f"Database '{Colors.CYAN}{db_name}{Colors.ENDC}' created successfully!")
-        save_last_generated_db(db_name)
+        # Save the database name to state file for potential deletion
+        try:
+            with open(STATE_FILE, "w") as f:
+                json.dump({"last_database_name": db_name}, f)
+        except Exception as e:
+            print_warning(f"Could not save state file: {e}")
 
         print_step(4, 6, "Retrieving database connection details...")
         show_output, show_error, show_code = run_command(f"turso db show {db_name}", timeout=60)
