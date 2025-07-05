@@ -794,28 +794,168 @@ def interactive_delete():
 
 
 def check_dependencies():
-    """Check if required dependencies are installed."""
+    """Check if required dependencies are installed with comprehensive safety guards."""
     print_step(1, 6, "Checking system dependencies...")
+    
+    missing_deps = []
+    warnings = []
+    
+    # Check Turso CLI
     turso_output, turso_error, turso_code = run_command("turso --version")
     if turso_code != 0:
-        print_error("Turso CLI is not installed or not in PATH!")
-        print_info("Please install Turso CLI from: https://docs.turso.tech/reference/turso-cli")
-        sys.exit(1)
-
-    turso_version = turso_output.split('\n')[0] if turso_output else "Unknown version"
-    print_success(f"Turso CLI found: {Colors.CYAN}{turso_version}{Colors.ENDC}")
-
+        missing_deps.append({
+            "name": "Turso CLI",
+            "install_cmd": "curl -sSfL https://get.tur.so/install.sh | bash",
+            "docs": "https://docs.turso.tech/reference/turso-cli",
+            "reason": "Required for database operations"
+        })
+    else:
+        turso_version = turso_output.split('\n')[0] if turso_output else "Unknown version"
+        print_success(f"Turso CLI found: {Colors.CYAN}{turso_version}{Colors.ENDC}")
+    
+    # Check pyperclip functionality
+    clipboard_available = False
     try:
-        pyperclip.copy("test_clipboard_turso_gen") # Test with a unique string
+        pyperclip.copy("test_clipboard_turso_gen")
         if pyperclip.paste() == "test_clipboard_turso_gen":
-             print_success("Clipboard functionality available.")
+            print_success("Clipboard functionality available.")
+            clipboard_available = True
         else:
             raise pyperclip.PyperclipException("Paste check failed")
-    except Exception as e: # Catch broader exceptions for clipboard
-        print_warning(f"Clipboard functionality might be limited or unavailable: {e}")
-        print_info("For Linux, try: sudo apt-get install xclip or sudo apt-get install xsel")
-        print_info("For macOS, clipboard access should be default.")
-        print_info("For Windows, clipboard access should be default.")
+    except Exception as e:
+        warnings.append({
+            "message": f"Clipboard functionality limited: {e}",
+            "solutions": get_clipboard_solutions()
+        })
+    
+    # Check Python version
+    python_version = sys.version_info
+    if python_version < (3, 6):
+        missing_deps.append({
+            "name": "Python 3.6+",
+            "install_cmd": "Please upgrade Python",
+            "docs": "https://python.org/downloads",
+            "reason": "Script requires Python 3.6 or higher"
+        })
+    else:
+        print_success(f"Python version: {Colors.CYAN}{python_version.major}.{python_version.minor}.{python_version.micro}{Colors.ENDC}")
+    
+    # Handle missing dependencies
+    if missing_deps:
+        print_section_divider("❌ MISSING DEPENDENCIES")
+        print_error("Some required dependencies are missing:")
+        
+        for dep in missing_deps:
+            print(f"\n{Colors.BOLD}{Colors.FAIL}• {dep['name']}{Colors.ENDC}")
+            print(f"  {Colors.GRAY}Reason: {dep['reason']}{Colors.ENDC}")
+            print(f"  {Colors.CYAN}Install: {dep['install_cmd']}{Colors.ENDC}")
+            print(f"  {Colors.GRAY}Docs: {dep['docs']}{Colors.ENDC}")
+        
+        print(f"\n{Colors.BOLD}{Colors.ORANGE}Please install the missing dependencies and try again.{Colors.ENDC}")
+        
+        # Offer to create installation script
+        try:
+            create_installer = input(f"\n{Colors.BOLD}{Colors.ORANGE}Create installation script? (y/N): {Colors.ENDC}").strip().lower()
+            if create_installer == 'y':
+                create_installation_script(missing_deps)
+        except KeyboardInterrupt:
+            pass
+        
+        sys.exit(1)
+    
+    # Handle warnings (non-fatal issues)
+    if warnings:
+        for warning in warnings:
+            print_warning(warning["message"])
+            for solution in warning["solutions"]:
+                print_info(solution)
+    
+    return clipboard_available
+
+def get_clipboard_solutions():
+    """Get platform-specific clipboard solutions."""
+    import platform
+    system = platform.system().lower()
+    
+    if system == "linux":
+        return [
+            "For Linux, install xclip: sudo apt-get install xclip",
+            "Or install xsel: sudo apt-get install xsel",
+            "For Wayland: sudo apt-get install wl-clipboard"
+        ]
+    elif system == "darwin":  # macOS
+        return [
+            "macOS clipboard should work by default",
+            "If issues persist, try: pip install pyobjc-framework-Cocoa"
+        ]
+    elif system == "windows":
+        return [
+            "Windows clipboard should work by default",
+            "If issues persist, try running as administrator"
+        ]
+    else:
+        return ["Please check your system's clipboard manager"]
+
+def create_installation_script(missing_deps):
+    """Create a platform-specific installation script."""
+    import platform
+    system = platform.system().lower()
+    
+    if system == "linux":
+        script_name = "install_dependencies.sh"
+        script_content = "#!/bin/bash\nset -e\necho 'Installing Turso DB Creator CLI dependencies...'\n\n"
+        
+        for dep in missing_deps:
+            if "Turso CLI" in dep["name"]:
+                script_content += "# Install Turso CLI\n"
+                script_content += dep["install_cmd"] + "\n\n"
+        
+        script_content += "# Install Python dependencies\n"
+        script_content += "pip install pyperclip rich\n\n"
+        script_content += "# Install clipboard dependencies\n"
+        script_content += "sudo apt-get update\n"
+        script_content += "sudo apt-get install -y xclip xsel\n\n"
+        script_content += "echo 'Dependencies installed successfully!'\n"
+        
+    elif system == "darwin":  # macOS
+        script_name = "install_dependencies.sh"
+        script_content = "#!/bin/bash\nset -e\necho 'Installing Turso DB Creator CLI dependencies...'\n\n"
+        
+        for dep in missing_deps:
+            if "Turso CLI" in dep["name"]:
+                script_content += "# Install Turso CLI\n"
+                script_content += dep["install_cmd"] + "\n\n"
+        
+        script_content += "# Install Python dependencies\n"
+        script_content += "pip install pyperclip rich\n\n"
+        script_content += "echo 'Dependencies installed successfully!'\n"
+        
+    else:  # Windows or others
+        script_name = "install_dependencies.bat"
+        script_content = "@echo off\necho Installing Turso DB Creator CLI dependencies...\n\n"
+        script_content += "pip install pyperclip rich\n\n"
+        script_content += "echo Please install Turso CLI manually from: https://docs.turso.tech/reference/turso-cli\n"
+        script_content += "pause\n"
+    
+    try:
+        with open(script_name, 'w') as f:
+            f.write(script_content)
+        
+        if system != "windows":
+            os.chmod(script_name, 0o755)
+        
+        print_success(f"Installation script created: {Colors.CYAN}{script_name}{Colors.ENDC}")
+        print_info(f"Run it with: {Colors.BOLD}./{script_name}{Colors.ENDC}")
+        
+    except IOError as e:
+        print_error(f"Could not create installation script: {e}")
+
+
+
+
+
+
+
 
 
 def main():
