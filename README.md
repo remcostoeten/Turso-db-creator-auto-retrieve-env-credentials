@@ -36,19 +36,17 @@ python3 generate-turso-db.py
 | `--configure` | Open configuration menu to set preferences. |
 
 #### 🗑️ Deletion Options
-> **Note:** Use only one deletion option at a time.
 
 | Option | Description |
-|--------|-------------|
+|--------|--------------|
 | `--delete-generation` | Delete the last database created by THIS script (uses state file). |
-| `--delete-interactive` | Interactively select and delete any of your Turso databases. |
 
 #### Full Usage Syntax
 ```bash
 python3 generate-turso-db.py [-h] [--name DB_NAME] [--overwrite FILENAME]
                               [--no-clipboard] [--auto-reveal {on,off}]
                               [--env-url-name VAR_NAME] [--env-token-name VAR_NAME]
-                              [--configure] [--delete-generation] [--delete-interactive]
+                              [--configure] [--seed [MODE]] [--delete-generation]
 ```
 
 ### Examples
@@ -83,13 +81,30 @@ python3 generate-turso-db.py --auto-reveal on
 python3 generate-turso-db.py --env-url-name CUSTOM_DB_URL --env-token-name CUSTOM_AUTH_TOKEN
 ```
 
+### Database Seeding
+
+| Option | Description |
+|--------|-------------|
+| `--seed [MODE]` | Run database seeding after creation. `MODE` can be: `drizzle` (run drizzle-kit push/migrate), `sql` (apply local SQL files), or `interactive` (choose method). If no mode is specified, it falls back to configuration or prompts the user. |
+
+```bash
+# Generate database and prompt for seeding method (interactive mode)
+python3 generate-turso-db.py --seed
+
+# Generate database and run Drizzle migrations
+python3 generate-turso-db.py --seed drizzle
+
+# Generate database and apply local SQL migration files
+python3 generate-turso-db.py --seed sql
+```
+
 ### Configuration
 
 > [!TIP]
 > For even easier access add this `alias create-turso="python3 ~/path/to/cloned/script/generate-turso-db.py` inside  your shell config."
 
 ```bash
-# Open interactive configuration menu to set preferences and disable prompts
+# Open interactive configuration menu to set preferences, including seeding defaults and prompt behaviors
 python3 generate-turso-db.py --configure
 ```
 
@@ -98,10 +113,11 @@ python3 generate-turso-db.py --configure
 ```bash
 # Delete the last database specifically created by this script (if tracked)
 python3 generate-turso-db.py --delete-generation
-
-# Show an interactive menu to select and delete any of your Turso databases
-python3 generate-turso-db.py --delete-interactive
 ```
+
+#### Post-Creation Deletion
+
+After creating a database, the script offers a post-completion prompt to delete the database if needed. This provides a safe way to clean up test databases immediately after creation.
 
 ## Requirements
 
