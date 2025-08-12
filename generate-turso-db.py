@@ -1112,6 +1112,42 @@ def get_database_details(db_name):
     
     return {"size": size}
 
+def find_empty_databases():
+    """Find and return all empty databases."""
+    print_info("Searching for empty databases...")
+    
+    # Fetch all database details with lazy=False to get all info
+    databases = fetch_all_database_details(lazy=False)
+    
+    if not databases:
+        print_warning("No databases found.")
+        return []
+    
+    # Filter for empty databases (size equals "0 B", "0 bytes", or "0KB")
+    empty_databases = []
+    for db in databases:
+        size = db.get("size", "Unknown")
+        # Check for various representations of zero size
+        if size in ["0 B", "0 bytes", "0KB", "0 KB", "0B"]:
+            empty_databases.append(db)
+        # Also check for numeric zero followed by any unit
+        elif size.startswith("0 ") or size.startswith("0."):
+            # Parse to check if it's actually zero
+            size_match = re.match(r'^([\d.]+)\s*([KMGTP]?B)', size)
+            if size_match:
+                size_value = float(size_match.group(1))
+                if size_value == 0:
+                    empty_databases.append(db)
+    
+    # Report findings
+    if empty_databases:
+        print_info(f"Found {Colors.CYAN}{len(empty_databases)}{Colors.ENDC} empty database(s).")
+    else:
+        print_info("No empty databases found.")
+    
+    return empty_databases
+
+def interactive_deletion():
     """Interactive deletion with lazy loading support."""
     databases = fetch_all_database_details(lazy=True, page_size=25)
 
@@ -1303,6 +1339,316 @@ def get_database_details(db_name):
             elif char == '\x03':  # Ctrl+C
                 raise KeyboardInterrupt
 
+    except KeyboardInterrupt:
+        print_error("\n\nOperation cancelled by user.")
+    finally:
+        # Restore terminal settings
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+        print("\n")  # Ensure we're on a new line
+
+
+def delete_empty_databases_interactive(auto_confirm=False, delete_all=False):
+    """Interactive deletion for empty databases only.
+    
+    Args:
+        auto_confirm: If True, skip confirmation prompts (for CI/automation)
+        delete_all: If True, delete all empty databases without selection
+    """
+    # Call find_empty_databases to get the list of empty databases
+    databases = find_empty_databases()
+    
+    # If no empty databases found, show warning and return
+    if not databases:
+        print_warning("No empty databases found to delete.")
+        return
+    
+    # Handle auto-confirm mode for CI/automation
+    if auto_confirm and delete_all:
+        print_section_divider("🗑️  AUTO-DELETE EMPTY DATABASES")
+        print_info(f"Found {Colors.CYAN}{len(databases)}{Colors.ENDC} empty database(s) to delete:")
+        for db in databases:
+            print(f"  - {Colors.BOLD}{db['name']}{Colors.ENDC} (Size: {db['size']})")
+        
+        print_info("\nProceeding with deletion (auto-confirm mode)...")
+        success_count = 0
+        failure_count = 0
+        failed_databases = []
+        
+        for db in databases:
+            if delete_database(db['name']):
+                success_count += 1
+                print_success(f"✓ Deleted: {db['name']}")
+            else:
+                failure_count += 1
+                failed_databases.append(db['name'])
+                print_error(f"✗ Failed: {db['name']}")
+        
+        # Display final summary
+        print(f"\n{Colors.GRAY}{'─' * 60}{Colors.ENDC}")
+        if success_count > 0 and failure_count == 0:
+            print_success(f"\n✅ Successfully deleted all {success_count} empty database(s)!")
+        elif success_count > 0 and failure_count > 0:
+            print_warning(f"\n⚠️  Partial success: {success_count} deleted, {failure_count} failed")
+        else:
+            print_error(f"\n❌ Failed to delete all {failure_count} database(s)")
+        return
+    
+    # Ask user whether to delete all or select individually
+    if not auto_confirm and len(databases) > 1:
+        print_section_divider("🗑️  DELETE EMPTY DATABASES")
+        print_info(f"Found {Colors.CYAN}{len(databases)}{Colors.ENDC} empty database(s).")
+        print("\nHow would you like to proceed?")
+        print(f"  {Colors.CYAN}1{Colors.ENDC} - Delete ALL empty databases at once")
+        print(f"  {Colors.CYAN}2{Colors.ENDC} - Select databases individually")
+        print(f"  {Colors.CYAN}3{Colors.ENDC} - Cancel")
+        
+        choice = input(f"\n{Colors.BOLD}{Colors.ORANGE}Enter your choice (1-3): {Colors.ENDC}").strip()
+        
+        if choice == '1':
+            # Bulk deletion with single confirmation
+            os.system('clear' if os.name == 'posix' else 'cls')
+            print_section_divider("🚨 CONFIRM BULK DELETION")
+            print_warning("You are about to PERMANENTLY delete ALL empty databases:")
+            for db in databases:
+                print(f"  - {Colors.BOLD}{Colors.FAIL}{db['name']}{Colors.ENDC} (Group: {db['group']}, Size: {db['size']})")
+            
+            confirm = input(f"\n{Colors.BOLD}{Colors.ORANGE}Type 'DELETE ALL' to confirm deletion of all {len(databases)} databases: {Colors.ENDC}").strip()
+            
+            if confirm == 'DELETE ALL':
+                print_info("\nProceeding with bulk deletion...")
+                success_count = 0
+                failure_count = 0
+                failed_databases = []
+                
+                for db in databases:
+                    if delete_database(db['name']):
+                        success_count += 1
+                        print_success(f"✓ Deleted: {db['name']}")
+                    else:
+                        failure_count += 1
+                        failed_databases.append(db['name'])
+                        print_error(f"✗ Failed: {db['name']}")
+                
+                # Display final summary
+                print(f"\n{Colors.GRAY}{'─' * 60}{Colors.ENDC}")
+                if success_count > 0 and failure_count == 0:
+                    print_success(f"\n✅ Successfully deleted all {success_count} empty database(s)!")
+                elif success_count > 0 and failure_count > 0:
+                    print_warning(f"\n⚠️  Partial success: {success_count} deleted, {failure_count} failed")
+                    print_error("Failed to delete:")
+                    for db_name in failed_databases:
+                        print(f"  - {Colors.FAIL}{db_name}{Colors.ENDC}")
+                else:
+                    print_error(f"\n❌ Failed to delete all {failure_count} database(s)")
+                
+                print(f"{Colors.GRAY}{'─' * 60}{Colors.ENDC}")
+                input(f"\n{Colors.BOLD}{Colors.GRAY}Press Enter to exit...{Colors.ENDC}")
+                return
+            else:
+                print_info("\nBulk deletion cancelled.")
+                return
+        elif choice == '3':
+            print_info("Operation cancelled.")
+            return
+        elif choice != '2':
+            print_warning("Invalid choice. Defaulting to individual selection.")
+    
+    # Add selected field to each database for individual selection
+    for db in databases:
+        db["selected"] = False
+    
+    # Pagination setup
+    page_size = 25
+    current_page = 0
+    total_pages = math.ceil(len(databases) / page_size)
+    
+    print_info("\nUse the following controls:")
+    print(f"  {Colors.CYAN}↑/↓{Colors.ENDC} or {Colors.CYAN}j/k{Colors.ENDC} - Navigate")
+    print(f"  {Colors.CYAN}SPACE{Colors.ENDC} - Toggle selection")
+    print(f"  {Colors.CYAN}a{Colors.ENDC} - Select all on page")
+    print(f"  {Colors.CYAN}d{Colors.ENDC} - Deselect all on page")
+    if total_pages > 1:
+        print(f"  {Colors.CYAN}n/p{Colors.ENDC} - Next/Previous page")
+    print(f"  {Colors.CYAN}ENTER{Colors.ENDC} - Confirm deletion")
+    print(f"  {Colors.CYAN}q{Colors.ENDC} or {Colors.CYAN}ESC{Colors.ENDC} - Cancel")
+    
+    current_index = 0
+    
+    def display_page():
+        os.system('clear' if os.name == 'posix' else 'cls')
+        print_section_divider("🗑️  DELETE EMPTY DATABASES")
+        
+        start_idx = current_page * page_size
+        end_idx = min(start_idx + page_size, len(databases))
+        
+        # Header
+        print(f"\n{Colors.BOLD}{Colors.WHITE}Page {current_page + 1}/{total_pages} - {len(databases)} empty database(s){Colors.ENDC}")
+        print(f"{Colors.GRAY}{'─' * 80}{Colors.ENDC}")
+        print(f"{Colors.BOLD}{Colors.WHITE}{'':4} {'Database Name':<25} {'Group':<12} {'Size':<10}{Colors.ENDC}")
+        print(f"{Colors.GRAY}{'─' * 80}{Colors.ENDC}")
+        
+        # Display databases
+        for i in range(start_idx, end_idx):
+            db = databases[i]
+            is_current = (i == current_index)
+            is_selected = db["selected"]
+            
+            # Selection indicator
+            selection = "[✓]" if is_selected else "[ ]"
+            
+            # Truncate long names if necessary
+            db_name = db['name'][:24] if len(db['name']) > 24 else db['name']
+            db_group = db['group'][:11] if len(db['group']) > 11 else db['group']
+            db_size = db['size'][:9] if len(db['size']) > 9 else db['size']  # Will be "0 B" or similar
+            
+            # Format the line
+            if is_current:
+                # Current selection - highlight entire line
+                if is_selected:
+                    print(f"{Colors.OKGREEN}▶ {selection} {db_name:<25} {db_group:<12} {db_size:<10}{Colors.ENDC}")
+                else:
+                    print(f"{Colors.YELLOW}▶ {selection} {db_name:<25} {db_group:<12} {db_size:<10}{Colors.ENDC}")
+            else:
+                # Regular line
+                if is_selected:
+                    print(f"  {Colors.CYAN}{selection} {db_name:<25} {db_group:<12} {db_size:<10}{Colors.ENDC}")
+                else:
+                    print(f"  {selection} {db_name:<25} {Colors.GRAY}{db_group:<12} {db_size:<10}{Colors.ENDC}")
+        
+        # Footer with selected count and instructions
+        selected_count = sum(1 for db in databases if db["selected"])
+        print(f"{Colors.GRAY}{'─' * 80}{Colors.ENDC}")
+        print(f"{Colors.BOLD}{Colors.ORANGE}Selected: {selected_count} empty database(s){Colors.ENDC}")
+        
+        if selected_count > 0:
+            print(f"\n{Colors.WARNING}⚠️  Press ENTER to delete {selected_count} selected empty database(s){Colors.ENDC}")
+        else:
+            print(f"\n{Colors.GRAY}Use SPACE to select databases, ENTER to delete selected{Colors.ENDC}")
+    
+    # Enable raw input mode for single keypress detection
+    import termios, tty
+    old_settings = termios.tcgetattr(sys.stdin)
+    
+    try:
+        tty.setraw(sys.stdin.fileno())
+        
+        while True:
+            display_page()
+            
+            # Read single character
+            char = sys.stdin.read(1)
+            
+            if char == '\x1b':  # ESC sequence
+                next_char = sys.stdin.read(1)
+                if next_char == '[':  # Arrow keys
+                    arrow = sys.stdin.read(1)
+                    if arrow == 'A':  # Up arrow
+                        if current_index > 0:
+                            current_index -= 1
+                            if current_index < current_page * page_size:
+                                current_page -= 1
+                    elif arrow == 'B':  # Down arrow
+                        if current_index < len(databases) - 1:
+                            current_index += 1
+                            if current_index >= (current_page + 1) * page_size:
+                                current_page += 1
+                else:
+                    # Just ESC pressed - quit
+                    break
+            
+            elif char == ' ':  # Space - toggle selection
+                databases[current_index]["selected"] = not databases[current_index]["selected"]
+            
+            elif char == 'j' or char == 'J':  # Move down
+                if current_index < len(databases) - 1:
+                    current_index += 1
+                    if current_index >= (current_page + 1) * page_size:
+                        current_page += 1
+            
+            elif char == 'k' or char == 'K':  # Move up
+                if current_index > 0:
+                    current_index -= 1
+                    if current_index < current_page * page_size:
+                        current_page -= 1
+            
+            elif char == 'n' or char == 'N':  # Next page
+                if current_page < total_pages - 1:
+                    current_page += 1
+                    current_index = current_page * page_size
+            
+            elif char == 'p' or char == 'P':  # Previous page
+                if current_page > 0:
+                    current_page -= 1
+                    current_index = current_page * page_size
+            
+            elif char == 'a' or char == 'A':  # Select all on page
+                start_idx = current_page * page_size
+                end_idx = min(start_idx + page_size, len(databases))
+                for i in range(start_idx, end_idx):
+                    databases[i]["selected"] = True
+            
+            elif char == 'd' or char == 'D':  # Deselect all on page
+                start_idx = current_page * page_size
+                end_idx = min(start_idx + page_size, len(databases))
+                for i in range(start_idx, end_idx):
+                    databases[i]["selected"] = False
+            
+            elif char == '\r' or char == '\n':  # Enter - confirm deletion
+                selected_dbs = [db for db in databases if db["selected"]]
+                if selected_dbs:
+                    # Restore terminal settings temporarily for input
+                    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+                    
+                    os.system('clear' if os.name == 'posix' else 'cls')
+                    print_section_divider("🚨 CONFIRM EMPTY DATABASE DELETION")
+                    print_warning("You are about to PERMANENTLY delete the following empty databases:")
+                    for db in selected_dbs:
+                        print(f"  - {Colors.BOLD}{Colors.FAIL}{db['name']}{Colors.ENDC} (Size: {db['size']})")
+                    
+                    confirm = input(f"\n{Colors.BOLD}{Colors.ORANGE}Type 'DELETE' to confirm deletion: {Colors.ENDC}").strip()
+                    
+                    if confirm == 'DELETE':
+                        print_info("\nProceeding with deletion...")
+                        success_count = 0
+                        failure_count = 0
+                        failed_databases = []
+                        
+                        for db in selected_dbs:
+                            if delete_database(db['name']):
+                                success_count += 1
+                            else:
+                                failure_count += 1
+                                failed_databases.append(db['name'])
+                        
+                        # Display final summary
+                        print(f"\n{Colors.GRAY}{'─' * 60}{Colors.ENDC}")
+                        if success_count > 0 and failure_count == 0:
+                            print_success(f"\n✅ Successfully deleted all {success_count} empty database(s)!")
+                        elif success_count > 0 and failure_count > 0:
+                            print_warning(f"\n⚠️  Partial success: {success_count} deleted, {failure_count} failed")
+                            print_error("Failed to delete:")
+                            for db_name in failed_databases:
+                                print(f"  - {Colors.FAIL}{db_name}{Colors.ENDC}")
+                        else:
+                            print_error(f"\n❌ Failed to delete all {failure_count} database(s)")
+                            print_error("Failed databases:")
+                            for db_name in failed_databases:
+                                print(f"  - {Colors.FAIL}{db_name}{Colors.ENDC}")
+                        
+                        print(f"{Colors.GRAY}{'─' * 60}{Colors.ENDC}")
+                        input(f"\n{Colors.BOLD}{Colors.GRAY}Press Enter to exit...{Colors.ENDC}")
+                        break
+                    else:
+                        print_info("\nDeletion cancelled.")
+                        # Re-enable raw mode
+                        tty.setraw(sys.stdin.fileno())
+            
+            elif char == 'q' or char == 'Q':  # Quit
+                break
+            
+            elif char == '\x03':  # Ctrl+C
+                raise KeyboardInterrupt
+    
     except KeyboardInterrupt:
         print_error("\n\nOperation cancelled by user.")
     finally:
@@ -1510,6 +1856,9 @@ def main():
   {Colors.CYAN}python {script_name} --delete-generation{Colors.ENDC}
     {Colors.GRAY}# Delete the last database specifically created by this script (if tracked).{Colors.ENDC}
 
+  {Colors.CYAN}python {script_name} --delete-empty{Colors.ENDC}
+    {Colors.GRAY}# Show and delete databases with 0 bytes of data.{Colors.ENDC}
+
   {Colors.CYAN}python {script_name} --delete-interactive{Colors.ENDC}
     {Colors.GRAY}# Show an interactive menu to select and delete any of your Turso databases.{Colors.ENDC}
 
@@ -1537,6 +1886,14 @@ def main():
     delete_group = parser.add_argument_group(f'{Colors.BOLD}{Colors.FAIL}Deletion Options{Colors.ENDC} (use one at a time)')
     delete_group.add_argument('--delete-generation', action='store_true',
                               help='Delete the last database created by THIS script (uses state file).')
+    delete_group.add_argument('--delete-empty', action='store_true',
+                              help='Find and delete empty databases (databases with 0 bytes or minimal size).')
+    delete_group.add_argument('--delete-empty-all', action='store_true',
+                              help='Delete ALL empty databases without confirmation (CI/automation mode).')
+    delete_group.add_argument('--delete-interactive', action='store_true',
+                              help='Interactive menu to select and delete any databases.')
+    delete_group.add_argument('--auto-confirm', action='store_true',
+                              help='Skip all confirmation prompts (use with caution, for CI/automation).')
 
     args = parser.parse_args()
     
@@ -1581,30 +1938,17 @@ def main():
             print_warning("No previous generation found (state file doesn't exist).")
         sys.exit(0)
 
-    if args.delete:
-        print_section_divider("🗑️  DELETE DATABASE")
-        # Handle comma-separated list of databases
-        db_names = [name.strip() for name in args.delete.split(',')]
+    if args.delete_empty or args.delete_empty_all:
+        print_section_divider("🗑️ DELETE EMPTY DATABASES")
+        # Use auto-confirm and delete_all flags for automation
+        auto_confirm = args.auto_confirm or args.delete_empty_all
+        delete_all = args.delete_empty_all
+        delete_empty_databases_interactive(auto_confirm=auto_confirm, delete_all=delete_all)
+        sys.exit(0)
 
-        if len(db_names) == 1:
-            # Single database deletion
-            if delete_database(db_names[0]):
-                print_success(f"Database '{db_names[0]}' deleted successfully!")
-            else:
-                print_error(f"Failed to delete database '{db_names[0]}'.")
-        else:
-            # Multiple database deletion
-            print_info(f"Deleting {len(db_names)} databases...")
-            success_count = 0
-            for db_name in db_names:
-                if delete_database(db_name):
-                    success_count += 1
-                    print_success(f"✓ Deleted: {db_name}")
-                else:
-                    print_error(f"✗ Failed: {db_name}")
-
-            print_info(f"\nDeleted {success_count}/{len(db_names)} databases.")
-
+    if args.delete_interactive:
+        print_section_divider("🗑️  INTERACTIVE DATABASE DELETION")
+        interactive_deletion()
         sys.exit(0)
 
     if args.configure:
