@@ -907,10 +907,9 @@ def post_completion_prompts(db_name, DATABASE_URL, auth_token):
                     
                     with open(env_file_path, mode) as f:
                         if mode == 'a':
-                            f.write("\n\n
+                            f.write("\n\n")
                         else:
-                            f.write("
-                        f.write(f"
+                            pass
                         f.write(f"DATABASE_URL={DATABASE_URL}\n")
                         f.write(f"TURSO_AUTH_TOKEN={auth_token}\n")
                     
@@ -1156,53 +1155,12 @@ def interactive_deletion():
         print_warning("No databases available to delete.")
         return
 
-    
-    sort_mode = 'name'  
-    sort_reverse = False  
+    databases.sort(key=lambda db: db['name'].lower())
 
-    def parse_size_to_bytes(size_str):
-        """Convert size string (e.g., '1.5 MB', '500 KB') to bytes for comparison."""
-        if size_str == "Unknown" or not size_str:
-            return 0
-        
-        
-        size_match = re.match(r'^([\d.]+)\s*([KMGTP]?B)', size_str.upper())
-        if not size_match:
-            return 0
-        
-        value = float(size_match.group(1))
-        unit = size_match.group(2)
-        
-        
-        multipliers = {
-            'B': 1,
-            'KB': 1024,
-            'MB': 1024 ** 2,
-            'GB': 1024 ** 3,
-            'TB': 1024 ** 4,
-            'PB': 1024 ** 5
-        }
-        
-        return value * multipliers.get(unit, 1)
-
-    def sort_databases():
-        """Sort the database list based on current sort mode and direction."""
-        nonlocal databases
-        
-        if sort_mode == 'name':
-            databases.sort(key=lambda db: db['name'].lower(), reverse=sort_reverse)
-        elif sort_mode == 'size':
-            databases.sort(key=lambda db: parse_size_to_bytes(db.get('size', '0 B')), reverse=sort_reverse)
-        elif sort_mode == 'group':
-            databases.sort(key=lambda db: (db.get('group', '').lower(), db['name'].lower()), reverse=sort_reverse)
-    
-    
-    sort_databases()
-
-    
     page_size = 25
     current_page = 0
     total_pages = math.ceil(len(databases) / page_size)
+    current_index = 0
 
     print_info("\nUse the following controls:")
     print(f"  {Colors.CYAN}↑/↓{Colors.ENDC} or {Colors.CYAN}j/k{Colors.ENDC} - Navigate")
@@ -1213,152 +1171,128 @@ def interactive_deletion():
     print(f"  {Colors.CYAN}ENTER{Colors.ENDC} - Confirm deletion")
     print(f"  {Colors.CYAN}q{Colors.ENDC} or {Colors.CYAN}ESC{Colors.ENDC} - Cancel")
 
-    current_index = 0
-
     def display_page():
-        
+        import shutil
         start_idx = current_page * page_size
         end_idx = min(start_idx + page_size, len(databases))
         load_database_details_batch(databases, start_idx, end_idx)
 
         os.system('clear' if os.name == 'posix' else 'cls')
-        print_section_divider("🗑️  INTERACTIVE DATABASE DELETION")
+        cols = max(60, shutil.get_terminal_size(fallback=(100, 24)).columns)
 
-        console = Console()
-        table = Table(show_header=True, header_style="bold white", border_style="bright_black")
-        table.add_column("", width=2)
-        table.add_column("Selection", width=5)
-        table.add_column("Database Name", width=30)
-        table.add_column("Group", width=15)
-        table.add_column("Size", width=10)
+        # Compact single-line title + page indicator
+        title = "🗑️  INTERACTIVE DATABASE DELETION"
+        title_line = f"{title} — Page {current_page + 1}/{total_pages}"
+        print(f"{Colors.PURPLE}{title_line}{Colors.ENDC}")
+        print(f"{Colors.GRAY}{'─' * cols}{Colors.ENDC}")
 
-        start_idx = current_page * page_size
-        end_idx = min(start_idx + page_size, len(databases))
+        # Dynamic columns: name | group | size
+        group_w = 18
+        size_w = 12
+        prefix_w = 2 + 1 + 3 + 1  # indicator + spaces and checkbox
+        sep_w = 3 + 3              # ' | ' twice
+        name_w = max(20, cols - (prefix_w + sep_w + group_w + size_w))
+
+        header = f"{'':2} {'Sel':3} {'Database Name':{name_w}} | {'Group':{group_w}} | {'Size':{size_w}}"
+        print(f"{Colors.BOLD}{Colors.WHITE}{header}{Colors.ENDC}")
+        print(f"{Colors.GRAY}{'─' * cols}{Colors.ENDC}")
 
         for i in range(start_idx, end_idx):
             db = databases[i]
             is_current = (i == current_index)
-            is_selected = db["selected"]
+            is_selected = db.get("selected", False)
 
-            selection = "[✓]" if is_selected else "[ ]"
-            
-            db_name = db['name']
-            db_group = db['group']
-            db_size = db['size']
+            sel_indicator = "[✓]" if is_selected else "[ ]"
+            row_indicator = "▶" if is_current else " "
 
-            row_style = ""
-            if is_current:
-                row_style = "on yellow" if not is_selected else "on green"
-            
-            selection_text = Text(selection)
-            if is_selected:
-                selection_text.style = "cyan"
+            raw_name = db['name']
+            db_name = (raw_name[: name_w - 2] + "..") if len(raw_name) > name_w else raw_name
+            raw_group = db.get('group', 'default')
+            db_group = (raw_group[: group_w - 2] + "..") if len(raw_group) > group_w else raw_group
+            raw_size = db.get('size', 'Unknown')
+            db_size = (raw_size[: size_w - 2] + "..") if len(raw_size) > size_w else raw_size
 
-            table.add_row(
-                "▶" if is_current else " ",
-                selection_text,
-                Text(db_name),
-                Text(db_group),
-                Text(db_size),
-                style=row_style
-            )
+            name_color = Colors.CYAN if is_selected else Colors.WHITE
+            bg_color = Colors.OKGREEN if (is_current and is_selected) else (Colors.YELLOW if is_current else "")
+            reset_color = Colors.ENDC if is_current or is_selected else ""
 
-        console.print(table)
+            line = f"{row_indicator:2} {sel_indicator:3} {name_color}{db_name:{name_w}}{Colors.ENDC} | {db_group:{group_w}} | {db_size:{size_w}}"
+            print(f"{bg_color}{line}{reset_color}")
 
-        
-        selected_count = sum(1 for db in databases if db["selected"])
-        print(f"{Colors.GRAY}{'─' * 80}{Colors.ENDC}")
-        print(f"{Colors.BOLD}{Colors.ORANGE}Selected: {selected_count} database(s){Colors.ENDC}")
-        
+        print(f"{Colors.GRAY}{'─' * cols}{Colors.ENDC}")
+
+        selected_count = sum(1 for db in databases if db.get("selected", False))
         if selected_count > 0:
-            print(f"\n{Colors.WARNING}⚠️  Press ENTER to delete {selected_count} selected database(s){Colors.ENDC}")
+            print(f"{Colors.BOLD}{Colors.ORANGE}Selected: {selected_count} • ENTER to delete • SPACE to toggle • q to quit{Colors.ENDC}")
         else:
-            print(f"\n{Colors.GRAY}Use SPACE to select databases, ENTER to delete selected{Colors.ENDC}")
-
-    
-    import termios, tty
-    old_settings = termios.tcgetattr(sys.stdin)
+            print(f"{Colors.GRAY}SPACE to toggle • ENTER to delete • n/p to page • q to quit{Colors.ENDC}")
 
     try:
+        import termios, tty
+        old_settings = termios.tcgetattr(sys.stdin)
         tty.setraw(sys.stdin.fileno())
 
         while True:
             display_page()
-
-            
             char = sys.stdin.read(1)
 
-            if char == '\x1b':  
+            if char == '':
                 next_char = sys.stdin.read(1)
-                if next_char == '[':  
+                if next_char == '[':
                     arrow = sys.stdin.read(1)
-                    if arrow == 'A':  
-                        if current_index > 0:
-                            current_index -= 1
-                            if current_index < current_page * page_size:
-                                current_page -= 1
-                    elif arrow == 'B':  
-                        if current_index < len(databases) - 1:
-                            current_index += 1
-                            if current_index >= (current_page + 1) * page_size:
-                                current_page += 1
+                    if arrow == 'A' and current_index > 0:
+                        current_index -= 1
+                        if current_index < current_page * page_size:
+                            current_page -= 1
+                    elif arrow == 'B' and current_index < len(databases) - 1:
+                        current_index += 1
+                        if current_index >= (current_page + 1) * page_size:
+                            current_page += 1
                 else:
-                    
                     break
 
-            elif char == ' ':  
-                databases[current_index]["selected"] = not databases[current_index]["selected"]
+            elif char == ' ':
+                databases[current_index]["selected"] = not databases[current_index].get("selected", False)
 
-            elif char == 'j' or char == 'J':  
-                if current_index < len(databases) - 1:
-                    current_index += 1
-                    if current_index >= (current_page + 1) * page_size:
-                        current_page += 1
-
-            elif char == 'k' or char == 'K':  
-                if current_index > 0:
-                    current_index -= 1
-                    if current_index < current_page * page_size:
-                        current_page -= 1
-
-            elif char == 'n' or char == 'N':  
-                if current_page < total_pages - 1:
+            elif char in ('j', 'J') and current_index < len(databases) - 1:
+                current_index += 1
+                if current_index >= (current_page + 1) * page_size:
                     current_page += 1
-                    current_index = current_page * page_size
-                    
-                    next_start = (current_page + 1) * page_size
-                    if next_start < len(databases):
-                        next_end = min(next_start + page_size, len(databases))
-                        load_database_details_batch(databases, next_start, next_end)
 
-            elif char == 'p' or char == 'P':  
-                if current_page > 0:
+            elif char in ('k', 'K') and current_index > 0:
+                current_index -= 1
+                if current_index < current_page * page_size:
                     current_page -= 1
-                    current_index = current_page * page_size
 
-            elif char == 'a' or char == 'A':  
+            elif char in ('n', 'N') and current_page < total_pages - 1:
+                current_page += 1
+                current_index = current_page * page_size
+
+            elif char in ('p', 'P') and current_page > 0:
+                current_page -= 1
+                current_index = current_page * page_size
+
+            elif char in ('a', 'A'):
                 start_idx = current_page * page_size
                 end_idx = min(start_idx + page_size, len(databases))
                 for i in range(start_idx, end_idx):
                     databases[i]["selected"] = True
 
-            elif char == 'd' or char == 'D':  
+            elif char in ('d', 'D'):
                 start_idx = current_page * page_size
                 end_idx = min(start_idx + page_size, len(databases))
                 for i in range(start_idx, end_idx):
                     databases[i]["selected"] = False
-
-            elif char == '\r' or char == '\n':  
-                selected_dbs = [db for db in databases if db["selected"]]
+            elif char in ('\r', '\n'):
+                selected_dbs = [db for db in databases if db.get("selected", False)]
                 if selected_dbs:
-                    
                     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
 
                     os.system('clear' if os.name == 'posix' else 'cls')
                     print_section_divider("🚨 CONFIRM DELETION")
                     print_warning("You are about to PERMANENTLY delete the following databases:")
                     for db in selected_dbs:
-                        print(f"  - {Colors.BOLD}{Colors.FAIL}{db['name']}{Colors.ENDC} (Size: {db['size']})")
+                        print(f"  - {Colors.BOLD}{Colors.FAIL}{db['name']}{Colors.ENDC} (Size: {db.get('size', 'Unknown')})")
 
                     confirm = input(f"\n{Colors.BOLD}{Colors.ORANGE}Type 'DELETE' to confirm deletion: {Colors.ENDC}").strip()
 
@@ -1378,22 +1312,21 @@ def interactive_deletion():
                         break
                     else:
                         print_info("\nDeletion cancelled.")
-                        
                         tty.setraw(sys.stdin.fileno())
 
-            elif char == 'q' or char == 'Q':  
+            elif char in ('q', 'Q'):
                 break
 
-            elif char == '\x03':  
+            elif char == '':
                 raise KeyboardInterrupt
 
     except KeyboardInterrupt:
         print_error("\n\nOperation cancelled by user.")
     finally:
-        
         termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-        print("\n")  
+        print("\n")
 
+# Removed a duplicated, partially broken interactive deletion block to resolve syntax/indent issues
 
 def delete_empty_databases_interactive(auto_confirm=False, delete_all=False):
     """Interactive deletion for empty databases only.
@@ -1523,64 +1456,58 @@ def delete_empty_databases_interactive(auto_confirm=False, delete_all=False):
     current_index = 0
     
     def display_page():
+        import shutil
         os.system('clear' if os.name == 'posix' else 'cls')
-        print_section_divider("🗑️  DELETE EMPTY DATABASES")
+        cols = max(60, shutil.get_terminal_size(fallback=(100, 24)).columns)
         
-        console = Console()
-        table = Table(show_header=True, header_style="bold white", border_style="bright_black")
-        table.add_column("", width=2)
-        table.add_column("Selection", width=5)
-        table.add_column("Database Name", width=30)
-        table.add_column("Group", width=15)
-        table.add_column("Size", width=10)
-
+        # Compact single-line title + page indicator
+        title = "🗑️  DELETE EMPTY DATABASES"
+        title_line = f"{title} — Page {current_page + 1}/{total_pages} — {len(databases)} empty DBs"
+        print(f"{Colors.PURPLE}{title_line}{Colors.ENDC}")
+        print(f"{Colors.GRAY}{'─' * cols}{Colors.ENDC}")
+        
         start_idx = current_page * page_size
         end_idx = min(start_idx + page_size, len(databases))
         
+        group_w = 18
+        size_w = 12
+        prefix_w = 2 + 1 + 3 + 1
+        sep_w = 3 + 3
+        name_w = max(20, cols - (prefix_w + sep_w + group_w + size_w))
         
-        print(f"\n{Colors.BOLD}{Colors.WHITE}Page {current_page + 1}/{total_pages} - {len(databases)} empty database(s){Colors.ENDC}")
-        
+        header = f"{'':2} {'Sel':3} {'Database Name':{name_w}} | {'Group':{group_w}} | {'Size':{size_w}}"
+        print(f"{Colors.BOLD}{Colors.WHITE}{header}{Colors.ENDC}")
+        print(f"{Colors.GRAY}{'─' * cols}{Colors.ENDC}")
         
         for i in range(start_idx, end_idx):
             db = databases[i]
             is_current = (i == current_index)
-            is_selected = db["selected"]
+            is_selected = db.get("selected", False)
             
+            sel_indicator = "[✓]" if is_selected else "[ ]"
+            row_indicator = "▶" if is_current else " "
             
-            selection = "[✓]" if is_selected else "[ ]"
-            
-            db_name = db['name']
-            db_group = db['group']
-            db_size = db['size']
+            raw_name = db['name']
+            db_name = (raw_name[: name_w - 2] + "..") if len(raw_name) > name_w else raw_name
+            raw_group = db.get('group', 'default')
+            db_group = (raw_group[: group_w - 2] + "..") if len(raw_group) > group_w else raw_group
+            raw_size = db.get('size', 'Unknown')
+            db_size = (raw_size[: size_w - 2] + "..") if len(raw_size) > size_w else raw_size
 
-            row_style = ""
-            if is_current:
-                row_style = "on yellow" if not is_selected else "on green"
-            
-            selection_text = Text(selection)
-            if is_selected:
-                selection_text.style = "cyan"
+            name_color = Colors.CYAN if is_selected else Colors.WHITE
+            bg_color = Colors.OKGREEN if (is_current and is_selected) else (Colors.YELLOW if is_current else "")
+            reset_color = Colors.ENDC if is_current or is_selected else ""
 
-            table.add_row(
-                "▶" if is_current else " ",
-                selection_text,
-                Text(db_name),
-                Text(db_group),
-                Text(db_size),
-                style=row_style
-            )
+            line = f"{row_indicator:2} {sel_indicator:3} {name_color}{db_name:{name_w}}{Colors.ENDC} | {db_group:{group_w}} | {db_size:{size_w}}"
+            print(f"{bg_color}{line}{reset_color}")
         
-        console.print(table)
-
+        print(f"{Colors.GRAY}{'─' * cols}{Colors.ENDC}")
         
         selected_count = sum(1 for db in databases if db["selected"])
-        print(f"{Colors.GRAY}{'─' * 80}{Colors.ENDC}")
-        print(f"{Colors.BOLD}{Colors.ORANGE}Selected: {selected_count} empty database(s){Colors.ENDC}")
-        
         if selected_count > 0:
-            print(f"\n{Colors.WARNING}⚠️  Press ENTER to delete {selected_count} selected empty database(s){Colors.ENDC}")
+            print(f"{Colors.BOLD}{Colors.ORANGE}Selected: {selected_count} • ENTER to delete • SPACE to toggle • q to quit{Colors.ENDC}")
         else:
-            print(f"\n{Colors.GRAY}Use SPACE to select databases, ENTER to delete selected{Colors.ENDC}")
+            print(f"{Colors.GRAY}SPACE to toggle • ENTER to delete • n/p to page • q to quit{Colors.ENDC}")
     
     
     import termios, tty
@@ -1822,52 +1749,41 @@ def create_installation_script(missing_deps):
     import platform
     system = platform.system().lower()
     
-    if system == "linux":
+    if system in ("linux", "darwin"):
         script_name = "install_dependencies.sh"
-        script_content = "
-        
+        lines = [
+            "#!/usr/bin/env bash",
+            "set -euo pipefail",
+            "echo 'Installing Turso DB Creator CLI dependencies...'",
+        ]
         for dep in missing_deps:
-            if "Turso CLI" in dep["name"]:
-                script_content += "
-                script_content += dep["install_cmd"] + "\n\n"
-        
-        script_content += "
-        script_content += "pip install pyperclip rich\n\n"
-        script_content += "
-        script_content += "sudo apt-get update\n"
-        script_content += "sudo apt-get install -y xclip xsel\n\n"
-        script_content += "echo 'Dependencies installed successfully!'\n"
-        
-    elif system == "darwin":  
-        script_name = "install_dependencies.sh"
-        script_content = "
-        
-        for dep in missing_deps:
-            if "Turso CLI" in dep["name"]:
-                script_content += "
-                script_content += dep["install_cmd"] + "\n\n"
-        
-        script_content += "
-        script_content += "pip install pyperclip rich\n\n"
-        script_content += "echo 'Dependencies installed successfully!'\n"
-        
-    else:  
+            if "Turso CLI" in dep.get("name", "") and dep.get("install_cmd"):
+                lines.append(dep["install_cmd"])
+        lines.append("pip install pyperclip rich")
+        if system == "linux":
+            lines.extend([
+                "sudo apt-get update",
+                "sudo apt-get install -y xclip xsel wl-clipboard || true",
+            ])
+        lines.append("echo 'Dependencies installed successfully!'")
+        script_content = "\n".join(lines) + "\n"
+    else:
         script_name = "install_dependencies.bat"
-        script_content = "@echo off\necho Installing Turso DB Creator CLI dependencies...\n\n"
-        script_content += "pip install pyperclip rich\n\n"
-        script_content += "echo Please install Turso CLI manually from: https://docs.turso.tech/reference/turso-cli\n"
-        script_content += "pause\n"
+        script_content = (
+            "@echo off\n"
+            "echo Installing Turso DB Creator CLI dependencies...\n\n"
+            "pip install pyperclip rich\n\n"
+            "echo Please install Turso CLI manually from: https://docs.turso.tech/reference/turso-cli\n"
+            "pause\n"
+        )
     
     try:
         with open(script_name, 'w') as f:
             f.write(script_content)
-        
         if system != "windows":
             os.chmod(script_name, 0o755)
-        
         print_success(f"Installation script created: {Colors.CYAN}{script_name}{Colors.ENDC}")
         print_info(f"Run it with: {Colors.BOLD}./{script_name}{Colors.ENDC}")
-        
     except IOError as e:
         print_error(f"Could not create installation script: {e}")
 
@@ -2177,10 +2093,7 @@ def create_database_interactive(seed_mode=None):
                 mode = 'a' if env_file_path.exists() else 'w'
                 with open(env_file_path, mode) as f:
                     if mode == 'a':
-                        f.write("\n\n
-                    else:
-                        f.write("
-                    f.write(f"
+                        f.write("\n\n")
                     f.write(f"{url_var_name}={DATABASE_URL}\n")
                     f.write(f"{token_var_name}={auth_token}\n")
                 
@@ -2512,9 +2425,8 @@ def main():
 
                 mode = 'a' if env_file_path.exists() else 'w'
                 with open(env_file_path, mode) as f:
-                    if mode == 'a': f.write("\n\n
-                    else: f.write("
-                    f.write(f"
+                    if mode == 'a':
+                        f.write("\n\n")
                     f.write(f"DATABASE_URL={DATABASE_URL}\n")
                     f.write(f"TURSO_AUTH_TOKEN={auth_token}\n")
                 print_success(f"Environment variables {'appended to' if mode == 'a' else 'written to'} {Colors.CYAN}{env_file_path}{Colors.ENDC}")
