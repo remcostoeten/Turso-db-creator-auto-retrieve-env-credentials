@@ -20,16 +20,17 @@ try:
     from rich.live import Live
     from rich.layout import Layout
     from rich.align import Align
+    from rich import box
     RICH_AVAILABLE = True
 except ImportError:
     RICH_AVAILABLE = False
     print("Note: Install 'rich' library for enhanced secret display features: pip install rich")
 
-# Script metadata (automatically updated by pre-commit hook)
+
 SCRIPT_VERSION = "1.1"
 LAST_UPDATED_TIMESTAMP = "2025-07-03 16:39:47 UTC"
 
-# Color codes for terminal output
+
 class Colors:
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
@@ -50,7 +51,7 @@ class Colors:
     ORANGE = '\033[38;5;208m'
     LIGHT_BLUE = '\033[38;5;117m'
 
-# Define a standard width for the content of all boxes
+
 CONTENT_WIDTH = 60
 STATE_FILE = Path.home() / ".turso_gen_state.json"
 CONFIG_FILE = Path.home() / ".turso_gen_config.json"
@@ -68,7 +69,7 @@ class SecretDisplay:
         if len(self.secret) <= 8:
             return "*" * len(self.secret)
         else:
-            # Show first 4 and last 4 characters with asterisks in between
+            
             return f"{self.secret[:4]}{'*' * (len(self.secret) - 8)}{self.secret[-4:]}"
     
     def get_full_display(self):
@@ -102,7 +103,7 @@ class SecretDisplay:
         masked = self.get_masked_display()
         console = Console()
         
-        # Create text with click instruction
+        
         text = Text()
         text.append(f"{self.name.upper()}: ", style="bold white")
         text.append(masked, style="bright_cyan")
@@ -133,7 +134,7 @@ class SecretDisplay:
                 for name, secret_obj in secrets_dict.items():
                     print(f"{Colors.BOLD}{Colors.ORANGE}{name.upper()}: {Colors.ENDC}{Colors.BRIGHT_CYAN}{secret_obj.get_full_display()}{Colors.ENDC}")
                 
-                # Ask if they want to copy to clipboard
+                
                 copy_input = input(f"\n{Colors.BOLD}{Colors.ORANGE}Copy revealed secrets to clipboard? (y/N): {Colors.ENDC}").strip().lower()
                 if copy_input == 'y':
                     try:
@@ -150,35 +151,35 @@ class SecretDisplay:
 
 def print_ascii_header():
     """Print a beautiful ASCII header with version and update info."""
-    # Prepare the version and timestamp line
+    
     version_text = f"Version: {SCRIPT_VERSION}"
     last_updated_text = f"Last Updated: {LAST_UPDATED_TIMESTAMP}"
 
-    # Combine with colors for display, but keep plain text for length calculation
+    
     info_line_plain = f"{version_text}  {last_updated_text}"
     info_line_colored = f"{Colors.BOLD}{Colors.WHITE}{version_text}{Colors.ENDC}  {Colors.GRAY}{last_updated_text}{Colors.ENDC}"
 
-    # Calculate visible length (without ANSI codes)
+    
     visible_length = len(info_line_plain)
 
-    # Calculate padding needed for centering
+    
     if visible_length < CONTENT_WIDTH:
         total_padding = CONTENT_WIDTH - visible_length
         left_padding = total_padding // 2
-        right_padding = total_padding - left_padding # Handles odd/even padding
+        right_padding = total_padding - left_padding 
     else:
         left_padding = 0
         right_padding = 0
-        # If the text is too long, it won't be centered but will start from left.
-        # Optionally, truncate info_line_colored if it's too long.
-        # For now, we'll let it overflow if it's drastically longer than CONTENT_WIDTH.
+        
+        
+        
 
     centered_info_line = f"{' ' * left_padding}{info_line_colored}{' ' * right_padding}"
 
-    # If the centered_info_line (with padding but without outer box colors) is longer than CONTENT_WIDTH due to color codes,
-    # we might need to adjust. However, the primary goal is to center the *visible* text.
-    # The re.sub method is more robust for calculating visible length if colors were within version_text etc.
-    # For this specific structure, direct length of plain parts is fine.
+    
+    
+    
+    
 
     print(f"""
 {Colors.CYAN}╔══════════════════════════════════════════════════════════════╗
@@ -229,22 +230,22 @@ def print_env_vars_box(DATABASE_URL, auth_token, db_name, url_var_name="DATABASE
     print_section_divider("🔐 GENERATED CREDENTIALS")
 
     def create_padded_line(text_to_pad, total_width):
-        # Calculate padding needed. Remove color codes for length calculation.
+        
         plain_text = re.sub(r'\033\[[0-9;]*m', '', text_to_pad)
         padding = total_width - len(plain_text)
-        return f"{text_to_pad}{' ' * max(0, padding)}" # Ensure padding is not negative
+        return f"{text_to_pad}{' ' * max(0, padding)}" 
 
     line_title = create_padded_line(f"  {Colors.BOLD}{Colors.WHITE}DATABASE CREDENTIALS", CONTENT_WIDTH)
     line_db_name = create_padded_line(f" {Colors.BOLD}{Colors.WHITE}Database Name: {Colors.CYAN}{db_name}", CONTENT_WIDTH)
     line_created_at = create_padded_line(f" {Colors.BOLD}{Colors.WHITE}Created At:  {Colors.GRAY}{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", CONTENT_WIDTH)
 
-    # Create SecretDisplay objects for sensitive data
+    
     db_url_secret = SecretDisplay(DATABASE_URL, "database_url")
     auth_token_secret = SecretDisplay(auth_token, "auth_token")
     
-    # Get masked displays
+    
     DATABASE_URL_display = db_url_secret.get_masked_display()
-    if len(DATABASE_URL_display) > CONTENT_WIDTH - 1: # -1 for the leading space
+    if len(DATABASE_URL_display) > CONTENT_WIDTH - 1: 
         DATABASE_URL_display = DATABASE_URL_display[:CONTENT_WIDTH - 4] + "..."
 
     truncated_token = auth_token_secret.get_masked_display()
@@ -254,7 +255,7 @@ def print_env_vars_box(DATABASE_URL, auth_token, db_name, url_var_name="DATABASE
     line_DATABASE_URL_val = create_padded_line(f" {Colors.BRIGHT_CYAN}{DATABASE_URL_display}{Colors.ENDC}", CONTENT_WIDTH)
     line_auth_token_val = create_padded_line(f" {Colors.BRIGHT_CYAN}{truncated_token}{Colors.ENDC}", CONTENT_WIDTH)
     
-    # Store secrets for potential reveal
+    
     secrets_dict = {
         "database_url": db_url_secret,
         "auth_token": auth_token_secret
@@ -276,7 +277,7 @@ def print_env_vars_box(DATABASE_URL, auth_token, db_name, url_var_name="DATABASE
 {Colors.BOLD}{Colors.OKGREEN}└{'─' * CONTENT_WIDTH}┘{Colors.ENDC}
 """)
     
-    # Return the secrets dict for use in main function
+    
     return secrets_dict
 
 
@@ -292,32 +293,32 @@ def print_footer(db_name):
     line3 = f"{Colors.BOLD}{Colors.ORANGE}{line3_raw}{Colors.ENDC}".center(CONTENT_WIDTH + len(f"{Colors.BOLD}{Colors.ORANGE}{Colors.ENDC}") - len(line3_raw))
     line4 = f"{Colors.BOLD}{Colors.WHITE}{line4_raw}{Colors.ENDC}".center(CONTENT_WIDTH + len(f"{Colors.BOLD}{Colors.WHITE}{Colors.ENDC}") - len(line4_raw))
 
-    # --- Logic for two-line delete command ---
-    # Line 5a: Informational text
+    
+    
     text_5a_plain = "🗑️ To delete this DB, run:"
     text_5a_content_colored = f"{Colors.FAIL}{text_5a_plain}{Colors.ENDC}"
-    padding_5a = CONTENT_WIDTH - len(text_5a_plain) # Use plain length for padding calculation
-    # Construct the full content for line 5a to be placed between box borders
-    # It starts with its own color, then padding, then PURPLE for the right border effect
+    padding_5a = CONTENT_WIDTH - len(text_5a_plain) 
+    
+    
     line5a_for_box = f"{text_5a_content_colored}{' ' * max(0, padding_5a)}{Colors.PURPLE}"
 
-    # Line 5b: The command itself
-    indent = "  " # Indentation for the command line
+    
+    indent = "  " 
     script_name = os.path.basename(sys.argv[0])
 
     cmd_part1_plain = f"python {script_name}"
-    cmd_part1_colored = f"{Colors.BOLD}{Colors.WHITE}{cmd_part1_plain}{Colors.ENDC}" # Command in bold white
+    cmd_part1_colored = f"{Colors.BOLD}{Colors.WHITE}{cmd_part1_plain}{Colors.ENDC}" 
 
     cmd_part2_plain = " --delete-generation"
-    cmd_part2_colored = f"{Colors.FAIL}{cmd_part2_plain}{Colors.ENDC}" # Flag in fail color
+    cmd_part2_colored = f"{Colors.FAIL}{cmd_part2_plain}{Colors.ENDC}" 
 
-    text_5b_plain_for_padding = f"{indent}{cmd_part1_plain}{cmd_part2_plain}" # Full plain text for padding
-    text_5b_content_colored = f"{indent}{cmd_part1_colored}{cmd_part2_colored}" # Full colored command
+    text_5b_plain_for_padding = f"{indent}{cmd_part1_plain}{cmd_part2_plain}" 
+    text_5b_content_colored = f"{indent}{cmd_part1_colored}{cmd_part2_colored}" 
 
-    padding_5b = CONTENT_WIDTH - len(text_5b_plain_for_padding) # Use plain length for padding
-    # Construct the full content for line 5b
+    padding_5b = CONTENT_WIDTH - len(text_5b_plain_for_padding) 
+    
     line5b_for_box = f"{text_5b_content_colored}{' ' * max(0, padding_5b)}{Colors.PURPLE}"
-    # --- End of two-line delete command logic ---
+    
 
     print(f"""
 {Colors.PURPLE}╔{'═' * CONTENT_WIDTH}╗
@@ -356,8 +357,8 @@ def read_last_generated_db():
             return data.get("last_database_name")
     except (json.JSONDecodeError, IOError) as e:
         print_warning(f"Could not read state file: {e}")
-        # Optionally, delete corrupted state file
-        # STATE_FILE.unlink(missing_ok=True)
+        
+        
         return None
 
 def load_config():
@@ -399,7 +400,7 @@ def load_config():
     try:
         with open(CONFIG_FILE, "r") as f:
             config = json.load(f)
-        # Merge with defaults to ensure all keys exist
+        
         merged_config = default_config.copy()
         merged_config.update(config)
         return merged_config
@@ -539,7 +540,7 @@ def configure_script():
             elif choice == 18:
                 try:
                     new_width = int(input(f"Enter new content width [{config['display']['content_width']}]: ").strip())
-                    if 40 <= new_width <= 120:  # Reasonable bounds
+                    if 40 <= new_width <= 120:  
                         config['display']['content_width'] = new_width
                         print(f"Content width set to: {Colors.CYAN}{new_width}{Colors.ENDC}")
                     else:
@@ -565,7 +566,7 @@ def run_drizzle_seeding(db_name, DATABASE_URL, auth_token):
     
     config = load_config()
     
-    # Check if drizzle-kit is available
+    
     drizzle_check, _, drizzle_code = run_command("npx drizzle-kit --version")
     if drizzle_code != 0:
         print_error("drizzle-kit not found. Please install it first:")
@@ -574,7 +575,7 @@ def run_drizzle_seeding(db_name, DATABASE_URL, auth_token):
     
     print_success("Drizzle-kit found.")
     
-    # Determine Drizzle config file path
+    
     drizzle_config_path = config['seeding']['drizzle_config_path']
     if drizzle_config_path:
         if not Path(drizzle_config_path).exists():
@@ -583,7 +584,7 @@ def run_drizzle_seeding(db_name, DATABASE_URL, auth_token):
     
     config_files = ["drizzle.config.ts", "drizzle.config.js", "drizzle.config.json"]
     if drizzle_config_path:
-        config_files.insert(0, drizzle_config_path) # Prioritize configured path
+        config_files.insert(0, drizzle_config_path) 
 
     config_found = False
     for config_file in config_files:
@@ -606,7 +607,7 @@ def run_drizzle_seeding(db_name, DATABASE_URL, auth_token):
             print_error("No Drizzle schema files found. Please ensure you have a proper Drizzle setup.")
             return False
     
-    # Ask user which operation to perform
+    
     print(f"\n{Colors.BOLD}{Colors.WHITE}Choose Drizzle operation:{Colors.ENDC}")
     print(f"  1. {Colors.CYAN}drizzle-kit push{Colors.ENDC} - Push schema to database")
     print(f"  2. {Colors.CYAN}drizzle-kit migrate{Colors.ENDC} - Run migrations")
@@ -615,7 +616,7 @@ def run_drizzle_seeding(db_name, DATABASE_URL, auth_token):
     try:
         choice = input(f"{Colors.BOLD}{Colors.ORANGE}Select option (1-3): {Colors.ENDC}").strip()
         
-        # Set environment variables for the operations
+        
         env_vars = os.environ.copy()
         env_vars['DATABASE_URL'] = DATABASE_URL
         env_vars['TURSO_AUTH_TOKEN'] = auth_token
@@ -669,7 +670,7 @@ def run_sql_seeding(db_name):
         else:
             print_warning(f"Configured SQL migration path '{sql_migration_path}' is not a directory. Searching common locations...")
 
-    # Look for SQL files in common directories if no specific path was configured or found
+    
     if not sql_files:
         sql_patterns = [
             "migrations/*.sql",
@@ -700,7 +701,7 @@ def run_sql_seeding(db_name):
         print_error("No SQL files found to apply.")
         return False
     
-    # Sort files to ensure proper order
+    
     sql_files.sort()
     
     print_success(f"Found {len(sql_files)} SQL file(s):")
@@ -713,7 +714,7 @@ def run_sql_seeding(db_name):
             print_info("SQL seeding cancelled.")
             return False
         
-        # Apply each SQL file using turso db shell
+        
         success_count = 0
         for sql_file in sql_files:
             print_info(f"Applying {Colors.CYAN}{sql_file}{Colors.ENDC}...")
@@ -721,7 +722,7 @@ def run_sql_seeding(db_name):
                 with open(sql_file, 'r') as f:
                     sql_content = f.read()
                 
-                # Use turso db shell with the SQL content
+                
                 shell_cmd = f'echo "{sql_content}" | turso db shell {db_name}'
                 output, error, code = run_command(shell_cmd)
                 
@@ -784,7 +785,7 @@ def run_interactive_seeding(db_name, DATABASE_URL, auth_token):
 def handle_seeding(seed_mode, db_name, DATABASE_URL, auth_token):
     """Handle seeding based on the provided mode."""
     if not seed_mode:
-        return True  # No seeding requested
+        return True  
     
     print_info(f"Starting database seeding with mode: {Colors.CYAN}{seed_mode}{Colors.ENDC}")
     
@@ -802,15 +803,15 @@ def post_completion_prompts(db_name, DATABASE_URL, auth_token):
     """Handle post-completion prompts based on configuration."""
     config = load_config()
     
-    # Show a beautifully styled options panel
+    
     options_title = "💡 ADDITIONAL OPTIONS AVAILABLE"
     option1 = "🗑️  Delete this database"
     option2 = "🔧 Open database shell"
     option3 = "💾 Save to .env file"
     
-    # Calculate padding for centering
+    
     title_padding = (CONTENT_WIDTH - len(options_title)) // 2
-    option_padding = 3  # Left padding for options
+    option_padding = 3  
     
     print(f"""
 {Colors.PURPLE}╔{'═' * CONTENT_WIDTH}╗
@@ -826,16 +827,16 @@ def post_completion_prompts(db_name, DATABASE_URL, auth_token):
         options_choice = input(f"\n{Colors.BOLD}{Colors.ORANGE}Press 'o' to access options or Enter to finish: {Colors.ENDC}").strip().lower()
         
         if options_choice != 'o':
-            return  # Exit if user doesn't want options
+            return  
             
     except KeyboardInterrupt:
         print_info("\nFinishing...")
         return
     
-    # Only show the options section if user pressed 'o'
+    
     print_section_divider("🎯 POST-COMPLETION OPTIONS")
     
-    # Delete generation prompt
+    
     if config['prompts']['delete_generation']:
         try:
             delete_choice = input(f"{Colors.BOLD}{Colors.ORANGE}Delete this generation? (y/N): {Colors.ENDC}").strip().lower()
@@ -847,11 +848,11 @@ def post_completion_prompts(db_name, DATABASE_URL, auth_token):
                         print_info("State file cleared.")
                     except OSError as e:
                         print_warning(f"Could not remove state file: {e}")
-                    return  # Exit early if database was deleted
+                    return  
         except KeyboardInterrupt:
             print_info("\nSkipping delete prompt.")
     
-    # Open Turso shell prompt
+    
     if config['prompts']['open_turso_web']:
         try:
             shell_choice = input(f"{Colors.BOLD}{Colors.ORANGE}Open database shell connection? (y/N): {Colors.ENDC}").strip().lower()
@@ -862,7 +863,7 @@ def post_completion_prompts(db_name, DATABASE_URL, auth_token):
                     print_info("Type '.quit' or '.exit' to close the shell.")
                     print("\n" + "="*60)
                     
-                    # Use subprocess.call for interactive shell
+                    
                     import subprocess
                     result = subprocess.call(["turso", "db", "shell", db_name])
                     
@@ -878,12 +879,12 @@ def post_completion_prompts(db_name, DATABASE_URL, auth_token):
         except KeyboardInterrupt:
             print_info("\nSkipping shell prompt.")
     
-    # Paste to .env prompt
+    
     if config['prompts']['paste_to_env']:
         try:
             env_choice = input(f"{Colors.BOLD}{Colors.ORANGE}Paste credentials to .env file? (y/N): {Colors.ENDC}").strip().lower()
             if env_choice == 'y':
-                # Get the default path from config
+                
                 default_env_path = config['env_file']['default_path']
                 default_env_dir = config['env_file']['default_env_dir']
                 
@@ -897,7 +898,7 @@ def post_completion_prompts(db_name, DATABASE_URL, auth_token):
                     env_file_path = Path(env_path)
                     env_file_path.parent.mkdir(parents=True, exist_ok=True)
                     
-                    # Check if file exists and ask for overwrite
+                    
                     if env_file_path.exists():
                         overwrite = input(f"{Colors.BOLD}{Colors.ORANGE}File exists. Append to existing file? (Y/n): {Colors.ENDC}").strip().lower()
                         mode = 'a' if overwrite != 'n' else 'w'
@@ -906,10 +907,9 @@ def post_completion_prompts(db_name, DATABASE_URL, auth_token):
                     
                     with open(env_file_path, mode) as f:
                         if mode == 'a':
-                            f.write("\n\n# Turso Credentials (added by script)\n")
+                            f.write("\n\n")
                         else:
-                            f.write("# Turso Credentials (generated by script)\n")
-                        f.write(f"# Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                            pass
                         f.write(f"DATABASE_URL={DATABASE_URL}\n")
                         f.write(f"TURSO_AUTH_TOKEN={auth_token}\n")
                     
@@ -929,24 +929,24 @@ def check_database_exists(db_name):
     if code != 0:
         print_warning("Could not fetch database list for existence check.")
         if error: print_warning(f"Turso CLI Error: {error}")
-        return False  # Assume it doesn't exist if we can't check
+        return False  
     
-    # Parse the table output to check for database name
+    
     lines = output.strip().split('\n')
-    if len(lines) < 2:  # No databases
+    if len(lines) < 2:  
         return False
     
-    # Skip header line and check each database entry
+    
     for line in lines[1:]:
         line = line.strip()
-        if not line:  # Skip empty lines
+        if not line:  
             continue
         
-        # Skip duplicate header lines that sometimes appear
+        
         if line.startswith("NAME") and "GROUP" in line and "URL" in line:
             continue
             
-        # Split by whitespace and get the first column (database name)
+        
         parts = line.split()
         if len(parts) >= 1:
             existing_name = parts[0]
@@ -958,18 +958,18 @@ def check_database_exists(db_name):
 def delete_database(db_name):
     """Deletes a Turso database."""
     print_info(f"Attempting to delete database: {Colors.CYAN}{db_name}{Colors.ENDC}")
-    command = f"turso db destroy {db_name} --yes" # --yes confirms deletion
+    command = f"turso db destroy {db_name} --yes" 
 
     output, error, code = run_command(command, timeout=60)
 
-    # Turso CLI might change its output format slightly.
-    # Check for common success indicators.
+    
+    
     if code == 0 and (f"Destroyed database {db_name}" in output or "successfully deleted" in output.lower()):
         print_success(f"Successfully deleted database '{Colors.CYAN}{db_name}{Colors.ENDC}'")
         return True
     else:
         print_error(f"Failed to delete database '{Colors.CYAN}{db_name}{Colors.ENDC}'")
-        # Provide more detailed error output from Turso CLI
+        
         if error: print_error(f"Turso CLI Error: {error}")
         if output: print_info(f"Turso CLI Output: {output}")
         return False
@@ -985,12 +985,12 @@ def delete_last_generated_db():
 
     if delete_database(db_name):
         try:
-            STATE_FILE.unlink() # Remove state file after successful deletion
+            STATE_FILE.unlink() 
             print_info("Cleared state file for the deleted database.")
         except OSError as e:
             print_warning(f"Could not remove state file {STATE_FILE}: {e}")
     else:
-        sys.exit(1) # Exit if deletion failed
+        sys.exit(1) 
 
 def fetch_all_database_details(lazy=False, page_size=25):
     """Fetch details for all databases with optional lazy loading."""
@@ -1001,26 +1001,26 @@ def fetch_all_database_details(lazy=False, page_size=25):
         if error: print_error(f"Turso CLI Error: {error}")
         return []
     
-    # Parse the table output to get database names
+    
     lines = output.strip().split('\n')
-    if len(lines) < 2:  # No databases (just header or empty)
+    if len(lines) < 2:  
         print_warning("No databases found.")
         return []
     
     db_list = []
-    # Skip header line and parse each database entry
+    
     for line in lines[1:]:
         line = line.strip()
-        if not line:  # Skip empty lines
+        if not line:  
             continue
         
-        # Skip duplicate header lines that sometimes appear
+        
         if line.startswith("NAME") and "GROUP" in line and "URL" in line:
             continue
             
-        # Split by whitespace - Turso output format is: NAME GROUP URL
+        
         parts = line.split()
-        if len(parts) >= 3:  # We need at least name, group, and URL
+        if len(parts) >= 3:  
             db_name = parts[0]
             db_group = parts[1]
             
@@ -1039,11 +1039,11 @@ def fetch_all_database_details(lazy=False, page_size=25):
     print_info(f"Found {Colors.CYAN}{len(db_list)}{Colors.ENDC} databases.")
     
     if not lazy:
-        # Load all details at once (original behavior)
+        
         print_info("Loading database details...")
         load_database_details_batch(db_list, 0, len(db_list))
     else:
-        # Only load details for the first page
+        
         print_info(f"Loading details for first {page_size} databases...")
         load_database_details_batch(db_list, 0, min(page_size, len(db_list)))
     
@@ -1057,7 +1057,7 @@ def load_database_details_batch(db_list, start_idx, end_idx):
     unloaded = [db for db in batch if not db.get("details_loaded", False)]
     
     if not unloaded:
-        return  # All details already loaded
+        return  
     
     def fetch_db_details(db_data):
         if db_data.get("details_loaded", False):
@@ -1067,11 +1067,11 @@ def load_database_details_batch(db_list, start_idx, end_idx):
         output, error, code = run_command(f"turso db show {name}")
         if code == 0:
             try:
-                # Parse the text output to extract size
+                
                 size_match = re.search(r'Size:\s+([\d.]+\s*[KMGTP]?B)', output)
                 size = size_match.group(1) if size_match else "Unknown"
                 
-                # Parse group if available in output
+                
                 group_match = re.search(r'Group:\s+(\w+)', output)
                 group = group_match.group(1) if group_match else db_data.get("group", "default")
                 
@@ -1088,17 +1088,17 @@ def load_database_details_batch(db_list, start_idx, end_idx):
             db_data["details_loaded"] = True
         return db_data
     
-    # Use thread pool to fetch details in parallel
+    
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = {executor.submit(fetch_db_details, db): db for db in unloaded}
         
         completed = 0
         for future in as_completed(futures):
             completed += 1
-            # Update progress
+            
             print(f"\r{Colors.GRAY}Loading: [{completed}/{len(unloaded)}]{Colors.ENDC}", end='', flush=True)
     
-    print("\r" + " " * 50 + "\r", end='')  # Clear progress line
+    print("\r" + " " * 50 + "\r", end='')  
 
 def get_database_details(db_name):
     """Get detailed information about a database including size."""
@@ -1106,7 +1106,7 @@ def get_database_details(db_name):
     if show_code != 0:
         return None
     
-    # Extract size from output
+    
     size_match = re.search(r'Size:\s+([\d.]+\s*[KMGTP]?B)', show_output)
     size = size_match.group(1) if size_match else "Unknown"
     
@@ -1116,30 +1116,30 @@ def find_empty_databases():
     """Find and return all empty databases."""
     print_info("Searching for empty databases...")
     
-    # Fetch all database details with lazy=False to get all info
+    
     databases = fetch_all_database_details(lazy=False)
     
     if not databases:
         print_warning("No databases found.")
         return []
     
-    # Filter for empty databases (size equals "0 B", "0 bytes", or "0KB")
+    
     empty_databases = []
     for db in databases:
         size = db.get("size", "Unknown")
-        # Check for various representations of zero size
+        
         if size in ["0 B", "0 bytes", "0KB", "0 KB", "0B"]:
             empty_databases.append(db)
-        # Also check for numeric zero followed by any unit
+        
         elif size.startswith("0 ") or size.startswith("0."):
-            # Parse to check if it's actually zero
+            
             size_match = re.match(r'^([\d.]+)\s*([KMGTP]?B)', size)
             if size_match:
                 size_value = float(size_match.group(1))
                 if size_value == 0:
                     empty_databases.append(db)
     
-    # Report findings
+    
     if empty_databases:
         print_info(f"Found {Colors.CYAN}{len(empty_databases)}{Colors.ENDC} empty database(s).")
     else:
@@ -1155,10 +1155,12 @@ def interactive_deletion():
         print_warning("No databases available to delete.")
         return
 
-    # Pagination setup
+    databases.sort(key=lambda db: db['name'].lower())
+
     page_size = 25
     current_page = 0
     total_pages = math.ceil(len(databases) / page_size)
+    current_index = 0
 
     print_info("\nUse the following controls:")
     print(f"  {Colors.CYAN}↑/↓{Colors.ENDC} or {Colors.CYAN}j/k{Colors.ENDC} - Navigate")
@@ -1169,148 +1171,128 @@ def interactive_deletion():
     print(f"  {Colors.CYAN}ENTER{Colors.ENDC} - Confirm deletion")
     print(f"  {Colors.CYAN}q{Colors.ENDC} or {Colors.CYAN}ESC{Colors.ENDC} - Cancel")
 
-    current_index = 0
-
     def display_page():
-        # Load details for current page if not already loaded
+        import shutil
         start_idx = current_page * page_size
         end_idx = min(start_idx + page_size, len(databases))
         load_database_details_batch(databases, start_idx, end_idx)
 
         os.system('clear' if os.name == 'posix' else 'cls')
-        print_section_divider("🗑️  INTERACTIVE DATABASE DELETION")
+        cols = max(60, shutil.get_terminal_size(fallback=(100, 24)).columns)
 
-        start_idx = current_page * page_size
-        end_idx = min(start_idx + page_size, len(databases))
+        # Compact single-line title + page indicator
+        title = "🗑️  INTERACTIVE DATABASE DELETION"
+        title_line = f"{title} — Page {current_page + 1}/{total_pages}"
+        print(f"{Colors.PURPLE}{title_line}{Colors.ENDC}")
+        print(f"{Colors.GRAY}{'─' * cols}{Colors.ENDC}")
 
-        # Header
-        print(f"\n{Colors.BOLD}{Colors.WHITE}Page {current_page + 1}/{total_pages} - {len(databases)} total databases{Colors.ENDC}")
-        print(f"{Colors.GRAY}{'─' * 80}{Colors.ENDC}")
-        print(f"{Colors.BOLD}{Colors.WHITE}{'':4} {'Database Name':<25} {'Group':<12} {'Size':<10}{Colors.ENDC}")
-        print(f"{Colors.GRAY}{'─' * 80}{Colors.ENDC}")
+        # Dynamic columns: name | group | size
+        group_w = 18
+        size_w = 12
+        prefix_w = 2 + 1 + 3 + 1  # indicator + spaces and checkbox
+        sep_w = 3 + 3              # ' | ' twice
+        name_w = max(20, cols - (prefix_w + sep_w + group_w + size_w))
 
-        # Display databases
+        header = f"{'':2} {'Sel':3} {'Database Name':{name_w}} | {'Group':{group_w}} | {'Size':{size_w}}"
+        print(f"{Colors.BOLD}{Colors.WHITE}{header}{Colors.ENDC}")
+        print(f"{Colors.GRAY}{'─' * cols}{Colors.ENDC}")
+
         for i in range(start_idx, end_idx):
             db = databases[i]
             is_current = (i == current_index)
-            is_selected = db["selected"]
+            is_selected = db.get("selected", False)
 
-            # Selection indicator
-            selection = "[✓]" if is_selected else "[ ]"
-            
-            # Truncate long names if necessary
-            db_name = db['name'][:24] if len(db['name']) > 24 else db['name']
-            db_group = db['group'][:11] if len(db['group']) > 11 else db['group']
-            db_size = db['size'][:9] if len(db['size']) > 9 else db['size']
+            sel_indicator = "[✓]" if is_selected else "[ ]"
+            row_indicator = "▶" if is_current else " "
 
-            # Format the line
-            if is_current:
-                # Current selection - highlight entire line
-                if is_selected:
-                    print(f"{Colors.OKGREEN}▶ {selection} {db_name:<25} {db_group:<12} {db_size:<10}{Colors.ENDC}")
-                else:
-                    print(f"{Colors.YELLOW}▶ {selection} {db_name:<25} {db_group:<12} {db_size:<10}{Colors.ENDC}")
-            else:
-                # Regular line
-                if is_selected:
-                    print(f"  {Colors.CYAN}{selection} {db_name:<25} {db_group:<12} {db_size:<10}{Colors.ENDC}")
-                else:
-                    print(f"  {selection} {db_name:<25} {Colors.GRAY}{db_group:<12} {db_size:<10}{Colors.ENDC}")
+            raw_name = db['name']
+            db_name = (raw_name[: name_w - 2] + "..") if len(raw_name) > name_w else raw_name
+            raw_group = db.get('group', 'default')
+            db_group = (raw_group[: group_w - 2] + "..") if len(raw_group) > group_w else raw_group
+            raw_size = db.get('size', 'Unknown')
+            db_size = (raw_size[: size_w - 2] + "..") if len(raw_size) > size_w else raw_size
 
-        # Footer with selected count and instructions
-        selected_count = sum(1 for db in databases if db["selected"])
-        print(f"{Colors.GRAY}{'─' * 80}{Colors.ENDC}")
-        print(f"{Colors.BOLD}{Colors.ORANGE}Selected: {selected_count} database(s){Colors.ENDC}")
-        
+            name_color = Colors.CYAN if is_selected else Colors.WHITE
+            bg_color = Colors.OKGREEN if (is_current and is_selected) else (Colors.YELLOW if is_current else "")
+            reset_color = Colors.ENDC if is_current or is_selected else ""
+
+            line = f"{row_indicator:2} {sel_indicator:3} {name_color}{db_name:{name_w}}{Colors.ENDC} | {db_group:{group_w}} | {db_size:{size_w}}"
+            print(f"{bg_color}{line}{reset_color}")
+
+        print(f"{Colors.GRAY}{'─' * cols}{Colors.ENDC}")
+
+        selected_count = sum(1 for db in databases if db.get("selected", False))
         if selected_count > 0:
-            print(f"\n{Colors.WARNING}⚠️  Press ENTER to delete {selected_count} selected database(s){Colors.ENDC}")
+            print(f"{Colors.BOLD}{Colors.ORANGE}Selected: {selected_count} • ENTER to delete • SPACE to toggle • q to quit{Colors.ENDC}")
         else:
-            print(f"\n{Colors.GRAY}Use SPACE to select databases, ENTER to delete selected{Colors.ENDC}")
-
-    # Enable raw input mode for single keypress detection
-    import termios, tty
-    old_settings = termios.tcgetattr(sys.stdin)
+            print(f"{Colors.GRAY}SPACE to toggle • ENTER to delete • n/p to page • q to quit{Colors.ENDC}")
 
     try:
+        import termios, tty
+        old_settings = termios.tcgetattr(sys.stdin)
         tty.setraw(sys.stdin.fileno())
 
         while True:
             display_page()
-
-            # Read single character
             char = sys.stdin.read(1)
 
-            if char == '\x1b':  # ESC sequence
+            if char == '':
                 next_char = sys.stdin.read(1)
-                if next_char == '[':  # Arrow keys
+                if next_char == '[':
                     arrow = sys.stdin.read(1)
-                    if arrow == 'A':  # Up arrow
-                        if current_index > 0:
-                            current_index -= 1
-                            if current_index < current_page * page_size:
-                                current_page -= 1
-                    elif arrow == 'B':  # Down arrow
-                        if current_index < len(databases) - 1:
-                            current_index += 1
-                            if current_index >= (current_page + 1) * page_size:
-                                current_page += 1
+                    if arrow == 'A' and current_index > 0:
+                        current_index -= 1
+                        if current_index < current_page * page_size:
+                            current_page -= 1
+                    elif arrow == 'B' and current_index < len(databases) - 1:
+                        current_index += 1
+                        if current_index >= (current_page + 1) * page_size:
+                            current_page += 1
                 else:
-                    # Just ESC pressed - quit
                     break
 
-            elif char == ' ':  # Space - toggle selection
-                databases[current_index]["selected"] = not databases[current_index]["selected"]
+            elif char == ' ':
+                databases[current_index]["selected"] = not databases[current_index].get("selected", False)
 
-            elif char == 'j' or char == 'J':  # Move down
-                if current_index < len(databases) - 1:
-                    current_index += 1
-                    if current_index >= (current_page + 1) * page_size:
-                        current_page += 1
-
-            elif char == 'k' or char == 'K':  # Move up
-                if current_index > 0:
-                    current_index -= 1
-                    if current_index < current_page * page_size:
-                        current_page -= 1
-
-            elif char == 'n' or char == 'N':  # Next page
-                if current_page < total_pages - 1:
+            elif char in ('j', 'J') and current_index < len(databases) - 1:
+                current_index += 1
+                if current_index >= (current_page + 1) * page_size:
                     current_page += 1
-                    current_index = current_page * page_size
-                    # Pre-load next page details
-                    next_start = (current_page + 1) * page_size
-                    if next_start < len(databases):
-                        next_end = min(next_start + page_size, len(databases))
-                        load_database_details_batch(databases, next_start, next_end)
 
-            elif char == 'p' or char == 'P':  # Previous page
-                if current_page > 0:
+            elif char in ('k', 'K') and current_index > 0:
+                current_index -= 1
+                if current_index < current_page * page_size:
                     current_page -= 1
-                    current_index = current_page * page_size
 
-            elif char == 'a' or char == 'A':  # Select all on page
+            elif char in ('n', 'N') and current_page < total_pages - 1:
+                current_page += 1
+                current_index = current_page * page_size
+
+            elif char in ('p', 'P') and current_page > 0:
+                current_page -= 1
+                current_index = current_page * page_size
+
+            elif char in ('a', 'A'):
                 start_idx = current_page * page_size
                 end_idx = min(start_idx + page_size, len(databases))
                 for i in range(start_idx, end_idx):
                     databases[i]["selected"] = True
 
-            elif char == 'd' or char == 'D':  # Deselect all on page
+            elif char in ('d', 'D'):
                 start_idx = current_page * page_size
                 end_idx = min(start_idx + page_size, len(databases))
                 for i in range(start_idx, end_idx):
                     databases[i]["selected"] = False
-
-            elif char == '\r' or char == '\n':  # Enter - confirm deletion
-                selected_dbs = [db for db in databases if db["selected"]]
+            elif char in ('\r', '\n'):
+                selected_dbs = [db for db in databases if db.get("selected", False)]
                 if selected_dbs:
-                    # Restore terminal settings temporarily for input
                     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
 
                     os.system('clear' if os.name == 'posix' else 'cls')
                     print_section_divider("🚨 CONFIRM DELETION")
                     print_warning("You are about to PERMANENTLY delete the following databases:")
                     for db in selected_dbs:
-                        print(f"  - {Colors.BOLD}{Colors.FAIL}{db['name']}{Colors.ENDC} (Size: {db['size']})")
+                        print(f"  - {Colors.BOLD}{Colors.FAIL}{db['name']}{Colors.ENDC} (Size: {db.get('size', 'Unknown')})")
 
                     confirm = input(f"\n{Colors.BOLD}{Colors.ORANGE}Type 'DELETE' to confirm deletion: {Colors.ENDC}").strip()
 
@@ -1330,22 +1312,21 @@ def interactive_deletion():
                         break
                     else:
                         print_info("\nDeletion cancelled.")
-                        # Re-enable raw mode
                         tty.setraw(sys.stdin.fileno())
 
-            elif char == 'q' or char == 'Q':  # Quit
+            elif char in ('q', 'Q'):
                 break
 
-            elif char == '\x03':  # Ctrl+C
+            elif char == '':
                 raise KeyboardInterrupt
 
     except KeyboardInterrupt:
         print_error("\n\nOperation cancelled by user.")
     finally:
-        # Restore terminal settings
         termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-        print("\n")  # Ensure we're on a new line
+        print("\n")
 
+# Removed a duplicated, partially broken interactive deletion block to resolve syntax/indent issues
 
 def delete_empty_databases_interactive(auto_confirm=False, delete_all=False):
     """Interactive deletion for empty databases only.
@@ -1354,15 +1335,15 @@ def delete_empty_databases_interactive(auto_confirm=False, delete_all=False):
         auto_confirm: If True, skip confirmation prompts (for CI/automation)
         delete_all: If True, delete all empty databases without selection
     """
-    # Call find_empty_databases to get the list of empty databases
+    
     databases = find_empty_databases()
     
-    # If no empty databases found, show warning and return
+    
     if not databases:
         print_warning("No empty databases found to delete.")
         return
     
-    # Handle auto-confirm mode for CI/automation
+    
     if auto_confirm and delete_all:
         print_section_divider("🗑️  AUTO-DELETE EMPTY DATABASES")
         print_info(f"Found {Colors.CYAN}{len(databases)}{Colors.ENDC} empty database(s) to delete:")
@@ -1383,7 +1364,7 @@ def delete_empty_databases_interactive(auto_confirm=False, delete_all=False):
                 failed_databases.append(db['name'])
                 print_error(f"✗ Failed: {db['name']}")
         
-        # Display final summary
+        
         print(f"\n{Colors.GRAY}{'─' * 60}{Colors.ENDC}")
         if success_count > 0 and failure_count == 0:
             print_success(f"\n✅ Successfully deleted all {success_count} empty database(s)!")
@@ -1393,7 +1374,7 @@ def delete_empty_databases_interactive(auto_confirm=False, delete_all=False):
             print_error(f"\n❌ Failed to delete all {failure_count} database(s)")
         return
     
-    # Ask user whether to delete all or select individually
+    
     if not auto_confirm and len(databases) > 1:
         print_section_divider("🗑️  DELETE EMPTY DATABASES")
         print_info(f"Found {Colors.CYAN}{len(databases)}{Colors.ENDC} empty database(s).")
@@ -1405,7 +1386,7 @@ def delete_empty_databases_interactive(auto_confirm=False, delete_all=False):
         choice = input(f"\n{Colors.BOLD}{Colors.ORANGE}Enter your choice (1-3): {Colors.ENDC}").strip()
         
         if choice == '1':
-            # Bulk deletion with single confirmation
+            
             os.system('clear' if os.name == 'posix' else 'cls')
             print_section_divider("🚨 CONFIRM BULK DELETION")
             print_warning("You are about to PERMANENTLY delete ALL empty databases:")
@@ -1429,7 +1410,7 @@ def delete_empty_databases_interactive(auto_confirm=False, delete_all=False):
                         failed_databases.append(db['name'])
                         print_error(f"✗ Failed: {db['name']}")
                 
-                # Display final summary
+                
                 print(f"\n{Colors.GRAY}{'─' * 60}{Colors.ENDC}")
                 if success_count > 0 and failure_count == 0:
                     print_success(f"\n✅ Successfully deleted all {success_count} empty database(s)!")
@@ -1453,11 +1434,11 @@ def delete_empty_databases_interactive(auto_confirm=False, delete_all=False):
         elif choice != '2':
             print_warning("Invalid choice. Defaulting to individual selection.")
     
-    # Add selected field to each database for individual selection
+    
     for db in databases:
         db["selected"] = False
     
-    # Pagination setup
+    
     page_size = 25
     current_page = 0
     total_pages = math.ceil(len(databases) / page_size)
@@ -1475,57 +1456,60 @@ def delete_empty_databases_interactive(auto_confirm=False, delete_all=False):
     current_index = 0
     
     def display_page():
+        import shutil
         os.system('clear' if os.name == 'posix' else 'cls')
-        print_section_divider("🗑️  DELETE EMPTY DATABASES")
+        cols = max(60, shutil.get_terminal_size(fallback=(100, 24)).columns)
+        
+        # Compact single-line title + page indicator
+        title = "🗑️  DELETE EMPTY DATABASES"
+        title_line = f"{title} — Page {current_page + 1}/{total_pages} — {len(databases)} empty DBs"
+        print(f"{Colors.PURPLE}{title_line}{Colors.ENDC}")
+        print(f"{Colors.GRAY}{'─' * cols}{Colors.ENDC}")
         
         start_idx = current_page * page_size
         end_idx = min(start_idx + page_size, len(databases))
         
-        # Header
-        print(f"\n{Colors.BOLD}{Colors.WHITE}Page {current_page + 1}/{total_pages} - {len(databases)} empty database(s){Colors.ENDC}")
-        print(f"{Colors.GRAY}{'─' * 80}{Colors.ENDC}")
-        print(f"{Colors.BOLD}{Colors.WHITE}{'':4} {'Database Name':<25} {'Group':<12} {'Size':<10}{Colors.ENDC}")
-        print(f"{Colors.GRAY}{'─' * 80}{Colors.ENDC}")
+        group_w = 18
+        size_w = 12
+        prefix_w = 2 + 1 + 3 + 1
+        sep_w = 3 + 3
+        name_w = max(20, cols - (prefix_w + sep_w + group_w + size_w))
         
-        # Display databases
+        header = f"{'':2} {'Sel':3} {'Database Name':{name_w}} | {'Group':{group_w}} | {'Size':{size_w}}"
+        print(f"{Colors.BOLD}{Colors.WHITE}{header}{Colors.ENDC}")
+        print(f"{Colors.GRAY}{'─' * cols}{Colors.ENDC}")
+        
         for i in range(start_idx, end_idx):
             db = databases[i]
             is_current = (i == current_index)
-            is_selected = db["selected"]
+            is_selected = db.get("selected", False)
             
-            # Selection indicator
-            selection = "[✓]" if is_selected else "[ ]"
+            sel_indicator = "[✓]" if is_selected else "[ ]"
+            row_indicator = "▶" if is_current else " "
             
-            # Truncate long names if necessary
-            db_name = db['name'][:24] if len(db['name']) > 24 else db['name']
-            db_group = db['group'][:11] if len(db['group']) > 11 else db['group']
-            db_size = db['size'][:9] if len(db['size']) > 9 else db['size']  # Will be "0 B" or similar
-            
-            # Format the line
-            if is_current:
-                # Current selection - highlight entire line
-                if is_selected:
-                    print(f"{Colors.OKGREEN}▶ {selection} {db_name:<25} {db_group:<12} {db_size:<10}{Colors.ENDC}")
-                else:
-                    print(f"{Colors.YELLOW}▶ {selection} {db_name:<25} {db_group:<12} {db_size:<10}{Colors.ENDC}")
-            else:
-                # Regular line
-                if is_selected:
-                    print(f"  {Colors.CYAN}{selection} {db_name:<25} {db_group:<12} {db_size:<10}{Colors.ENDC}")
-                else:
-                    print(f"  {selection} {db_name:<25} {Colors.GRAY}{db_group:<12} {db_size:<10}{Colors.ENDC}")
+            raw_name = db['name']
+            db_name = (raw_name[: name_w - 2] + "..") if len(raw_name) > name_w else raw_name
+            raw_group = db.get('group', 'default')
+            db_group = (raw_group[: group_w - 2] + "..") if len(raw_group) > group_w else raw_group
+            raw_size = db.get('size', 'Unknown')
+            db_size = (raw_size[: size_w - 2] + "..") if len(raw_size) > size_w else raw_size
+
+            name_color = Colors.CYAN if is_selected else Colors.WHITE
+            bg_color = Colors.OKGREEN if (is_current and is_selected) else (Colors.YELLOW if is_current else "")
+            reset_color = Colors.ENDC if is_current or is_selected else ""
+
+            line = f"{row_indicator:2} {sel_indicator:3} {name_color}{db_name:{name_w}}{Colors.ENDC} | {db_group:{group_w}} | {db_size:{size_w}}"
+            print(f"{bg_color}{line}{reset_color}")
         
-        # Footer with selected count and instructions
+        print(f"{Colors.GRAY}{'─' * cols}{Colors.ENDC}")
+        
         selected_count = sum(1 for db in databases if db["selected"])
-        print(f"{Colors.GRAY}{'─' * 80}{Colors.ENDC}")
-        print(f"{Colors.BOLD}{Colors.ORANGE}Selected: {selected_count} empty database(s){Colors.ENDC}")
-        
         if selected_count > 0:
-            print(f"\n{Colors.WARNING}⚠️  Press ENTER to delete {selected_count} selected empty database(s){Colors.ENDC}")
+            print(f"{Colors.BOLD}{Colors.ORANGE}Selected: {selected_count} • ENTER to delete • SPACE to toggle • q to quit{Colors.ENDC}")
         else:
-            print(f"\n{Colors.GRAY}Use SPACE to select databases, ENTER to delete selected{Colors.ENDC}")
+            print(f"{Colors.GRAY}SPACE to toggle • ENTER to delete • n/p to page • q to quit{Colors.ENDC}")
     
-    # Enable raw input mode for single keypress detection
+    
     import termios, tty
     old_settings = termios.tcgetattr(sys.stdin)
     
@@ -1535,68 +1519,68 @@ def delete_empty_databases_interactive(auto_confirm=False, delete_all=False):
         while True:
             display_page()
             
-            # Read single character
+            
             char = sys.stdin.read(1)
             
-            if char == '\x1b':  # ESC sequence
+            if char == '\x1b':  
                 next_char = sys.stdin.read(1)
-                if next_char == '[':  # Arrow keys
+                if next_char == '[':  
                     arrow = sys.stdin.read(1)
-                    if arrow == 'A':  # Up arrow
+                    if arrow == 'A':  
                         if current_index > 0:
                             current_index -= 1
                             if current_index < current_page * page_size:
                                 current_page -= 1
-                    elif arrow == 'B':  # Down arrow
+                    elif arrow == 'B':  
                         if current_index < len(databases) - 1:
                             current_index += 1
                             if current_index >= (current_page + 1) * page_size:
                                 current_page += 1
                 else:
-                    # Just ESC pressed - quit
+                    
                     break
             
-            elif char == ' ':  # Space - toggle selection
+            elif char == ' ':  
                 databases[current_index]["selected"] = not databases[current_index]["selected"]
             
-            elif char == 'j' or char == 'J':  # Move down
+            elif char == 'j' or char == 'J':  
                 if current_index < len(databases) - 1:
                     current_index += 1
                     if current_index >= (current_page + 1) * page_size:
                         current_page += 1
             
-            elif char == 'k' or char == 'K':  # Move up
+            elif char == 'k' or char == 'K':  
                 if current_index > 0:
                     current_index -= 1
                     if current_index < current_page * page_size:
                         current_page -= 1
             
-            elif char == 'n' or char == 'N':  # Next page
+            elif char == 'n' or char == 'N':  
                 if current_page < total_pages - 1:
                     current_page += 1
                     current_index = current_page * page_size
             
-            elif char == 'p' or char == 'P':  # Previous page
+            elif char == 'p' or char == 'P':  
                 if current_page > 0:
                     current_page -= 1
                     current_index = current_page * page_size
             
-            elif char == 'a' or char == 'A':  # Select all on page
+            elif char == 'a' or char == 'A':  
                 start_idx = current_page * page_size
                 end_idx = min(start_idx + page_size, len(databases))
                 for i in range(start_idx, end_idx):
                     databases[i]["selected"] = True
             
-            elif char == 'd' or char == 'D':  # Deselect all on page
+            elif char == 'd' or char == 'D':  
                 start_idx = current_page * page_size
                 end_idx = min(start_idx + page_size, len(databases))
                 for i in range(start_idx, end_idx):
                     databases[i]["selected"] = False
             
-            elif char == '\r' or char == '\n':  # Enter - confirm deletion
+            elif char == '\r' or char == '\n':  
                 selected_dbs = [db for db in databases if db["selected"]]
                 if selected_dbs:
-                    # Restore terminal settings temporarily for input
+                    
                     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
                     
                     os.system('clear' if os.name == 'posix' else 'cls')
@@ -1620,7 +1604,7 @@ def delete_empty_databases_interactive(auto_confirm=False, delete_all=False):
                                 failure_count += 1
                                 failed_databases.append(db['name'])
                         
-                        # Display final summary
+                        
                         print(f"\n{Colors.GRAY}{'─' * 60}{Colors.ENDC}")
                         if success_count > 0 and failure_count == 0:
                             print_success(f"\n✅ Successfully deleted all {success_count} empty database(s)!")
@@ -1640,21 +1624,21 @@ def delete_empty_databases_interactive(auto_confirm=False, delete_all=False):
                         break
                     else:
                         print_info("\nDeletion cancelled.")
-                        # Re-enable raw mode
+                        
                         tty.setraw(sys.stdin.fileno())
             
-            elif char == 'q' or char == 'Q':  # Quit
+            elif char == 'q' or char == 'Q':  
                 break
             
-            elif char == '\x03':  # Ctrl+C
+            elif char == '\x03':  
                 raise KeyboardInterrupt
     
     except KeyboardInterrupt:
         print_error("\n\nOperation cancelled by user.")
     finally:
-        # Restore terminal settings
+        
         termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-        print("\n")  # Ensure we're on a new line
+        print("\n")  
 
 
 def check_dependencies():
@@ -1664,7 +1648,7 @@ def check_dependencies():
     missing_deps = []
     warnings = []
     
-    # Check Turso CLI
+    
     turso_output, turso_error, turso_code = run_command("turso --version")
     if turso_code != 0:
         missing_deps.append({
@@ -1677,7 +1661,7 @@ def check_dependencies():
         turso_version = turso_output.split('\n')[0] if turso_output else "Unknown version"
         print_success(f"Turso CLI found: {Colors.CYAN}{turso_version}{Colors.ENDC}")
     
-    # Check pyperclip functionality
+    
     clipboard_available = False
     try:
         pyperclip.copy("test_clipboard_turso_gen")
@@ -1692,7 +1676,7 @@ def check_dependencies():
             "solutions": get_clipboard_solutions()
         })
     
-    # Check Python version
+    
     python_version = sys.version_info
     if python_version < (3, 6):
         missing_deps.append({
@@ -1704,7 +1688,7 @@ def check_dependencies():
     else:
         print_success(f"Python version: {Colors.CYAN}{python_version.major}.{python_version.minor}.{python_version.micro}{Colors.ENDC}")
     
-    # Handle missing dependencies
+    
     if missing_deps:
         print_section_divider("❌ MISSING DEPENDENCIES")
         print_error("Some required dependencies are missing:")
@@ -1717,7 +1701,7 @@ def check_dependencies():
         
         print(f"\n{Colors.BOLD}{Colors.ORANGE}Please install the missing dependencies and try again.{Colors.ENDC}")
         
-        # Offer to create installation script
+        
         try:
             create_installer = input(f"\n{Colors.BOLD}{Colors.ORANGE}Create installation script? (y/N): {Colors.ENDC}").strip().lower()
             if create_installer == 'y':
@@ -1727,7 +1711,7 @@ def check_dependencies():
         
         sys.exit(1)
     
-    # Handle warnings (non-fatal issues)
+    
     if warnings:
         for warning in warnings:
             print_warning(warning["message"])
@@ -1747,7 +1731,7 @@ def get_clipboard_solutions():
             "Or install xsel: sudo apt-get install xsel",
             "For Wayland: sudo apt-get install wl-clipboard"
         ]
-    elif system == "darwin":  # macOS
+    elif system == "darwin":  
         return [
             "macOS clipboard should work by default",
             "If issues persist, try: pip install pyobjc-framework-Cocoa"
@@ -1765,52 +1749,41 @@ def create_installation_script(missing_deps):
     import platform
     system = platform.system().lower()
     
-    if system == "linux":
+    if system in ("linux", "darwin"):
         script_name = "install_dependencies.sh"
-        script_content = "#!/bin/bash\nset -e\necho 'Installing Turso DB Creator CLI dependencies...'\n\n"
-        
+        lines = [
+            "#!/usr/bin/env bash",
+            "set -euo pipefail",
+            "echo 'Installing Turso DB Creator CLI dependencies...'",
+        ]
         for dep in missing_deps:
-            if "Turso CLI" in dep["name"]:
-                script_content += "# Install Turso CLI\n"
-                script_content += dep["install_cmd"] + "\n\n"
-        
-        script_content += "# Install Python dependencies\n"
-        script_content += "pip install pyperclip rich\n\n"
-        script_content += "# Install clipboard dependencies\n"
-        script_content += "sudo apt-get update\n"
-        script_content += "sudo apt-get install -y xclip xsel\n\n"
-        script_content += "echo 'Dependencies installed successfully!'\n"
-        
-    elif system == "darwin":  # macOS
-        script_name = "install_dependencies.sh"
-        script_content = "#!/bin/bash\nset -e\necho 'Installing Turso DB Creator CLI dependencies...'\n\n"
-        
-        for dep in missing_deps:
-            if "Turso CLI" in dep["name"]:
-                script_content += "# Install Turso CLI\n"
-                script_content += dep["install_cmd"] + "\n\n"
-        
-        script_content += "# Install Python dependencies\n"
-        script_content += "pip install pyperclip rich\n\n"
-        script_content += "echo 'Dependencies installed successfully!'\n"
-        
-    else:  # Windows or others
+            if "Turso CLI" in dep.get("name", "") and dep.get("install_cmd"):
+                lines.append(dep["install_cmd"])
+        lines.append("pip install pyperclip rich")
+        if system == "linux":
+            lines.extend([
+                "sudo apt-get update",
+                "sudo apt-get install -y xclip xsel wl-clipboard || true",
+            ])
+        lines.append("echo 'Dependencies installed successfully!'")
+        script_content = "\n".join(lines) + "\n"
+    else:
         script_name = "install_dependencies.bat"
-        script_content = "@echo off\necho Installing Turso DB Creator CLI dependencies...\n\n"
-        script_content += "pip install pyperclip rich\n\n"
-        script_content += "echo Please install Turso CLI manually from: https://docs.turso.tech/reference/turso-cli\n"
-        script_content += "pause\n"
+        script_content = (
+            "@echo off\n"
+            "echo Installing Turso DB Creator CLI dependencies...\n\n"
+            "pip install pyperclip rich\n\n"
+            "echo Please install Turso CLI manually from: https://docs.turso.tech/reference/turso-cli\n"
+            "pause\n"
+        )
     
     try:
         with open(script_name, 'w') as f:
             f.write(script_content)
-        
         if system != "windows":
             os.chmod(script_name, 0o755)
-        
         print_success(f"Installation script created: {Colors.CYAN}{script_name}{Colors.ENDC}")
         print_info(f"Run it with: {Colors.BOLD}./{script_name}{Colors.ENDC}")
-        
     except IOError as e:
         print_error(f"Could not create installation script: {e}")
 
@@ -1822,49 +1795,380 @@ def create_installation_script(missing_deps):
 
 
 
+def interactive_main_menu():
+    """Display the main interactive menu and handle user selection."""
+    while True:
+        os.system('clear' if os.name == 'posix' else 'cls')
+        print_ascii_header()
+        print_section_divider("🎯 INTERACTIVE MODE")
+        
+        print(f"\n{Colors.BOLD}{Colors.WHITE}Select an option:{Colors.ENDC}")
+        print(f"  {Colors.CYAN}1{Colors.ENDC} - Create new database")
+        print(f"  {Colors.CYAN}2{Colors.ENDC} - Delete last generated database")
+        print(f"  {Colors.CYAN}3{Colors.ENDC} - Delete empty databases")
+        print(f"  {Colors.CYAN}4{Colors.ENDC} - Interactive database deletion")
+        print(f"  {Colors.CYAN}5{Colors.ENDC} - Configure script settings")
+        print(f"  {Colors.CYAN}6{Colors.ENDC} - Database seeding options")
+        print(f"  {Colors.CYAN}7{Colors.ENDC} - Help / Documentation")
+        print(f"  {Colors.CYAN}8{Colors.ENDC} - Exit")
+        
+        try:
+            choice = input(f"\n{Colors.BOLD}{Colors.ORANGE}Enter your choice (1-8): {Colors.ENDC}").strip()
+            
+            if choice == '1':
+                
+                os.system('clear' if os.name == 'posix' else 'cls')
+                print_ascii_header()
+                create_database_interactive()
+                input(f"\n{Colors.BOLD}{Colors.GRAY}Press Enter to return to menu...{Colors.ENDC}")
+                
+            elif choice == '2':
+                
+                os.system('clear' if os.name == 'posix' else 'cls')
+                print_ascii_header()
+                print_section_divider("🗑️  DELETE LAST GENERATION")
+                if STATE_FILE.exists():
+                    try:
+                        with open(STATE_FILE, 'r') as f:
+                            state = json.load(f)
+                            last_db_name = state.get('last_database_name')
+                            if last_db_name:
+                                confirm = input(f"{Colors.BOLD}{Colors.ORANGE}Delete database '{last_db_name}'? (y/N): {Colors.ENDC}").strip().lower()
+                                if confirm == 'y':
+                                    if delete_database(last_db_name):
+                                        print_success(f"Database '{last_db_name}' deleted successfully!")
+                                        STATE_FILE.unlink(missing_ok=True)
+                                        print_info("State file cleared.")
+                                    else:
+                                        print_error(f"Failed to delete database '{last_db_name}'.")
+                                else:
+                                    print_info("Deletion cancelled.")
+                            else:
+                                print_warning("No database name found in state file.")
+                    except (json.JSONDecodeError, KeyError) as e:
+                        print_error(f"Could not read state file: {e}")
+                else:
+                    print_warning("No previous generation found (state file doesn't exist).")
+                input(f"\n{Colors.BOLD}{Colors.GRAY}Press Enter to return to menu...{Colors.ENDC}")
+                
+            elif choice == '3':
+                
+                os.system('clear' if os.name == 'posix' else 'cls')
+                delete_empty_databases_interactive(auto_confirm=False, delete_all=False)
+                
+            elif choice == '4':
+                
+                interactive_deletion()
+                
+            elif choice == '5':
+                
+                os.system('clear' if os.name == 'posix' else 'cls')
+                print_ascii_header()
+                configure_script()
+                input(f"\n{Colors.BOLD}{Colors.GRAY}Press Enter to return to menu...{Colors.ENDC}")
+                
+            elif choice == '6':
+                
+                database_seeding_menu()
+                
+            elif choice == '7':
+                
+                show_interactive_help()
+                input(f"\n{Colors.BOLD}{Colors.GRAY}Press Enter to return to menu...{Colors.ENDC}")
+                
+            elif choice == '8':
+                
+                print_info("Exiting...")
+                sys.exit(0)
+                
+            else:
+                print_warning("Invalid choice. Please select 1-8.")
+                time.sleep(1)
+                
+        except KeyboardInterrupt:
+            print_error("\n\nOperation cancelled by user.")
+            sys.exit(1)
+            
+def show_interactive_help():
+    """Display comprehensive help information for interactive mode."""
+    os.system('clear' if os.name == 'posix' else 'cls')
+    print_ascii_header()
+    print_section_divider("📚 HELP & DOCUMENTATION")
+    
+    print(f"\n{Colors.BOLD}{Colors.WHITE}🚀 Quick Start:{Colors.ENDC}")
+    print(f"{Colors.GRAY}This interactive mode provides easy access to all Turso database operations.{Colors.ENDC}")
+    print(f"{Colors.GRAY}Simply select an option from the menu and follow the prompts.{Colors.ENDC}")
+    
+    print(f"\n{Colors.BOLD}{Colors.WHITE}📋 Available Operations:{Colors.ENDC}")
+    
+    print(f"\n{Colors.CYAN}1. Create New Database:{Colors.ENDC}")
+    print(f"   - Generates a new Turso database with authentication token")
+    print(f"   - Automatically copies credentials to clipboard")
+    print(f"   - Option to save to .env file")
+    print(f"   - Supports custom naming or auto-generated names")
+    
+    print(f"\n{Colors.CYAN}2. Delete Last Generated:{Colors.ENDC}")
+    print(f"   - Removes the most recently created database by this script")
+    print(f"   - Uses state tracking to identify the correct database")
+    
+    print(f"\n{Colors.CYAN}3. Delete Empty Databases:{Colors.ENDC}")
+    print(f"   - Finds all databases with 0 bytes of data")
+    print(f"   - Offers bulk or individual deletion options")
+    print(f"   - Great for cleaning up test databases")
+    
+    print(f"\n{Colors.CYAN}4. Interactive Database Deletion:{Colors.ENDC}")
+    print(f"   - Browse all your databases with pagination")
+    print(f"   - Select multiple databases for deletion")
+    print(f"   - Shows database size and group information")
+    
+    print(f"\n{Colors.CYAN}5. Configure Script:{Colors.ENDC}")
+    print(f"   - Set default environment variable names")
+    print(f"   - Configure auto-reveal preferences")
+    print(f"   - Customize prompts and behaviors")
+    print(f"   - Set default database prefixes")
+    
+    print(f"\n{Colors.CYAN}6. Database Seeding:{Colors.ENDC}")
+    print(f"   - Drizzle migrations (drizzle-kit push/migrate)")
+    print(f"   - SQL file migrations")
+    print(f"   - Interactive seeding selection")
+    
+    print(f"\n{Colors.BOLD}{Colors.WHITE}⌨️  Keyboard Shortcuts:{Colors.ENDC}")
+    print(f"   {Colors.CYAN}Ctrl+C{Colors.ENDC} - Cancel current operation")
+    print(f"   {Colors.CYAN}Enter{Colors.ENDC}  - Confirm selection")
+    print(f"   {Colors.CYAN}↑/↓{Colors.ENDC}    - Navigate in selection menus")
+    print(f"   {Colors.CYAN}Space{Colors.ENDC}  - Toggle selection in lists")
+    
+    print(f"\n{Colors.BOLD}{Colors.WHITE}💡 Tips:{Colors.ENDC}")
+    print(f"   • Run {Colors.CYAN}turso auth login{Colors.ENDC} before using this script")
+    print(f"   • Credentials are automatically masked for security")
+    print(f"   • Use configuration menu to disable unwanted prompts")
+    print(f"   • State file tracks your last created database")
+    
+    print(f"\n{Colors.BOLD}{Colors.WHITE}🔧 Command Line Usage:{Colors.ENDC}")
+    print(f"   {Colors.CYAN}python3 generate-turso-db.py interactive{Colors.ENDC}")
+    print(f"   {Colors.CYAN}python3 generate-turso-db.py i{Colors.ENDC}")
+    print(f"   {Colors.CYAN}python3 generate-turso-db.py -i{Colors.ENDC}")
+    print(f"   {Colors.CYAN}python3 generate-turso-db.py --interactive{Colors.ENDC}")
+    
+    print(f"\n{Colors.BOLD}{Colors.WHITE}📖 For more information:{Colors.ENDC}")
+    print(f"   Visit: {Colors.CYAN}https://docs.turso.tech{Colors.ENDC}")
+    print(f"   Script Version: {Colors.CYAN}{SCRIPT_VERSION}{Colors.ENDC}")
+    print(f"   Last Updated: {Colors.GRAY}{LAST_UPDATED_TIMESTAMP}{Colors.ENDC}")
+
+def database_seeding_menu():
+    """Submenu for database seeding options."""
+    while True:
+        os.system('clear' if os.name == 'posix' else 'cls')
+        print_ascii_header()
+        print_section_divider("🌱 DATABASE SEEDING OPTIONS")
+        
+        print(f"\n{Colors.BOLD}{Colors.WHITE}Select seeding method:{Colors.ENDC}")
+        print(f"  {Colors.CYAN}1{Colors.ENDC} - Create database with Drizzle seeding")
+        print(f"  {Colors.CYAN}2{Colors.ENDC} - Create database with SQL file seeding")
+        print(f"  {Colors.CYAN}3{Colors.ENDC} - Create database and choose seeding interactively")
+        print(f"  {Colors.CYAN}4{Colors.ENDC} - Back to main menu")
+        
+        try:
+            choice = input(f"\n{Colors.BOLD}{Colors.ORANGE}Enter your choice (1-4): {Colors.ENDC}").strip()
+            
+            if choice in ['1', '2', '3']:
+                seed_mode = {'1': 'drizzle', '2': 'sql', '3': 'interactive'}[choice]
+                create_database_interactive(seed_mode=seed_mode)
+                input(f"\n{Colors.BOLD}{Colors.GRAY}Press Enter to return to menu...{Colors.ENDC}")
+            elif choice == '4':
+                break
+            else:
+                print_warning("Invalid choice. Please select 1-4.")
+                time.sleep(1)
+                
+        except KeyboardInterrupt:
+            break
+
+def create_database_interactive(seed_mode=None):
+    """Interactive database creation with optional seeding."""
+    try:
+        
+        check_dependencies()
+        
+        
+        print_step(1, 6, "Verifying Turso CLI authentication...")
+        auth_output, auth_error, auth_code = run_command("turso auth status")
+        if auth_code != 0 or "You are not logged in" in auth_output or "not authenticated" in auth_output.lower():
+            print_error("Turso CLI authentication failed or you are not logged in.")
+            print_info(f"Please run: {Colors.BOLD}turso auth login{Colors.ENDC}")
+            return
+        whoami_output, _, _ = run_command("turso auth whoami")
+        print_success(f"Turso CLI authentication verified (Logged in as: {Colors.CYAN}{whoami_output or 'user'}{Colors.ENDC}).")
+        
+        
+        print_step(2, 6, "Database configuration...")
+        db_name_input = input(f"{Colors.BOLD}{Colors.ORANGE}Enter database name (or press Enter for auto-generated): {Colors.ENDC}").strip()
+        
+        
+        print_step(3, 6, "Creating new Turso database...")
+        db_create_command = f"turso db create"
+        if db_name_input:
+            db_create_command += f" {db_name_input}"
+        
+        create_output, create_error, create_code = run_command(db_create_command, timeout=90)
+        if create_code != 0:
+            print_error(f"Database creation failed: {create_error or 'Unknown error'}")
+            return
+        
+        db_name_match = re.search(r'(?:Created database|Database)\s+([\w-]+)', create_output)
+        if not db_name_match:
+            print_error("Could not extract database name from Turso output.")
+            print_info(f"Output: {create_output}")
+            return
+        
+        db_name = db_name_match.group(1)
+        print_success(f"Database '{Colors.CYAN}{db_name}{Colors.ENDC}' created successfully!")
+        
+        
+        try:
+            with open(STATE_FILE, "w") as f:
+                json.dump({"last_database_name": db_name}, f)
+        except Exception as e:
+            print_warning(f"Could not save state file: {e}")
+        
+        
+        print_step(4, 6, "Retrieving database connection details...")
+        show_output, show_error, show_code = run_command(f"turso db show {db_name}", timeout=60)
+        if show_code != 0:
+            print_error(f"Failed to get database details for {db_name}: {show_error}")
+            return
+        
+        url_match = re.search(r'URL:\s+(libsql://[\w.-]+)', show_output)
+        if not url_match:
+            print_error("Could not extract database URL from Turso output.")
+            return
+        DATABASE_URL = url_match.group(1)
+        print_success("Database URL retrieved.")
+        
+        
+        print_step(5, 6, "Generating authentication token...")
+        token_output, token_error, token_code = run_command(f"turso db tokens create {db_name}", timeout=60)
+        if token_code != 0:
+            print_error(f"Token creation failed for {db_name}: {token_error}")
+            return
+        auth_token = token_output.strip()
+        if not auth_token or len(auth_token) < 10:
+            print_error("Generated token appears invalid or empty.")
+            return
+        print_success("Authentication token generated.")
+        
+        
+        config = load_config()
+        url_var_name = config['defaults']['env_url_name']
+        token_var_name = config['defaults']['env_token_name']
+        
+        secrets_dict = print_env_vars_box(DATABASE_URL, auth_token, db_name, url_var_name, token_var_name)
+        
+        print_step(6, 6, "Finalizing setup...")
+        
+        
+        env_vars_string = f"{url_var_name}={DATABASE_URL}\n{token_var_name}={auth_token}"
+        try:
+            pyperclip.copy(env_vars_string)
+            print_success("🔗 URL and auth token copied to clipboard!")
+        except Exception as e:
+            print_warning(f"Could not copy to clipboard: {e}")
+        
+        
+        if seed_mode:
+            seeding_success = handle_seeding(seed_mode, db_name, DATABASE_URL, auth_token)
+            if seeding_success:
+                print_success("Database seeding completed successfully!")
+            else:
+                print_warning("Database seeding completed with some issues.")
+        
+        
+        save_env = input(f"\n{Colors.BOLD}{Colors.ORANGE}Save credentials to .env file? (y/N): {Colors.ENDC}").strip().lower()
+        if save_env == 'y':
+            env_path = input(f"{Colors.BOLD}{Colors.ORANGE}Enter .env file path [.env]: {Colors.ENDC}").strip() or ".env"
+            try:
+                env_file_path = Path(env_path)
+                env_file_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                mode = 'a' if env_file_path.exists() else 'w'
+                with open(env_file_path, mode) as f:
+                    if mode == 'a':
+                        f.write("\n\n")
+                    f.write(f"{url_var_name}={DATABASE_URL}\n")
+                    f.write(f"{token_var_name}={auth_token}\n")
+                
+                print_success(f"Credentials {'appended to' if mode == 'a' else 'written to'} {Colors.CYAN}{env_file_path}{Colors.ENDC}")
+            except IOError as e:
+                print_error(f"Could not write to {env_path}: {e}")
+        
+        print_footer(db_name)
+        
+    except KeyboardInterrupt:
+        print_error("\n\nOperation cancelled by user.")
+    except Exception as e:
+        print_error(f"An unexpected error occurred: {e}")
+
 def main():
     script_name = os.path.basename(sys.argv[0])
     parser = argparse.ArgumentParser(
         description=f'{Colors.BOLD}{Colors.ORANGE}Turso Database & Token Generator{Colors.ENDC} - Automate Turso DB tasks.',
-        formatter_class=argparse.RawTextHelpFormatter, # Allows for better formatting in help
+        formatter_class=argparse.RawTextHelpFormatter, 
         epilog=f"""
 {Colors.BOLD}{Colors.WHITE}Examples:{Colors.ENDC}
   {Colors.CYAN}python {script_name}{Colors.ENDC}
-    {Colors.GRAY}# Generate a new database, display credentials, and copy to clipboard.{Colors.ENDC}
+    {Colors.GRAY}
+
+  {Colors.CYAN}python {script_name} interactive{Colors.ENDC}
+    {Colors.GRAY}
 
   {Colors.CYAN}python {script_name} --overwrite .env.local{Colors.ENDC}
-    {Colors.GRAY}# Generate a new database and update/create '.env.local' in the project root.{Colors.ENDC}
+    {Colors.GRAY}
 
   {Colors.CYAN}python {script_name} --no-clipboard{Colors.ENDC}
-    {Colors.GRAY}# Generate a new database but do not copy credentials to clipboard.{Colors.ENDC}
+    {Colors.GRAY}
 
 {Colors.BOLD}{Colors.OKGREEN}Database Seeding:{Colors.ENDC}
   {Colors.CYAN}python {script_name} --seed{Colors.ENDC}
-    {Colors.GRAY}# Generate database and prompt for seeding method (interactive mode).{Colors.ENDC}
+    {Colors.GRAY}
 
   {Colors.CYAN}python {script_name} --seed drizzle{Colors.ENDC}
-    {Colors.GRAY}# Generate database and run Drizzle migrations (drizzle-kit push/migrate).{Colors.ENDC}
+    {Colors.GRAY}
 
   {Colors.CYAN}python {script_name} --seed sql{Colors.ENDC}
-    {Colors.GRAY}# Generate database and apply local SQL migration files via Turso shell.{Colors.ENDC}
+    {Colors.GRAY}
+
+{Colors.BOLD}{Colors.PURPLE}Interactive Mode:{Colors.ENDC}
+  {Colors.CYAN}python {script_name} interactive{Colors.ENDC}
+  {Colors.CYAN}python {script_name} i{Colors.ENDC}
+  {Colors.CYAN}python {script_name} -i{Colors.ENDC}
+  {Colors.CYAN}python {script_name} --interactive{Colors.ENDC}
+    {Colors.GRAY}
 
 {Colors.BOLD}{Colors.ORANGE}Configuration:{Colors.ENDC}
   {Colors.CYAN}python {script_name} --configure{Colors.ENDC}
-    {Colors.GRAY}# Open interactive configuration menu to set preferences and disable prompts.{Colors.ENDC}
+    {Colors.GRAY}
 
 {Colors.BOLD}{Colors.FAIL}Deletion Commands:{Colors.ENDC}
   {Colors.CYAN}python {script_name} --delete-generation{Colors.ENDC}
-    {Colors.GRAY}# Delete the last database specifically created by this script (if tracked).{Colors.ENDC}
+    {Colors.GRAY}
 
   {Colors.CYAN}python {script_name} --delete-empty{Colors.ENDC}
-    {Colors.GRAY}# Show and delete databases with 0 bytes of data.{Colors.ENDC}
+    {Colors.GRAY}
 
   {Colors.CYAN}python {script_name} --delete-interactive{Colors.ENDC}
-    {Colors.GRAY}# Show an interactive menu to select and delete any of your Turso databases.{Colors.ENDC}
+    {Colors.GRAY}
 
 {Colors.BOLD}{Colors.GRAY}Note: The --seed flag replaces previous --migrate-* variants.{Colors.ENDC}
         """
     )
+    
+    parser.add_argument('mode', nargs='?', choices=['interactive', 'i'], 
+                       help='Launch interactive mode (can use "interactive" or "i")')
+    
+    
+    parser.add_argument('-i', '--interactive', action='store_true',
+                       help='Launch interactive mode with menu-driven interface')
+    
     parser.add_argument('--name', metavar='DB_NAME',
                        help='Custom name for the database. If not provided, Turso will generate a random name.')
     parser.add_argument('--overwrite', metavar='FILENAME',
@@ -1897,22 +2201,33 @@ def main():
 
     args = parser.parse_args()
     
-    # Load configuration and apply defaults if arguments weren't explicitly provided
+    
+    is_interactive = (
+        args.interactive or 
+        args.mode in ['interactive', 'i'] or
+        (len(sys.argv) == 2 and sys.argv[1] in ['interactive', 'i', '-i', '--i'])
+    )
+    
+    if is_interactive:
+        interactive_main_menu()
+        sys.exit(0)
+    
+    
     config = load_config()
     
-    # Apply configuration defaults if arguments weren't explicitly set
+    
     if '--auto-reveal' not in sys.argv:
         args.auto_reveal = config['defaults']['auto_reveal']
     
     if '--no-clipboard' not in sys.argv and config['defaults']['no_clipboard']:
         args.no_clipboard = True
     
-    # Apply database prefix if name wasn't provided and prefix is configured
+    
     if not args.name and config['defaults']['default_db_prefix']:
         prefix = config['defaults']['default_db_prefix']
         args.name = f"{prefix}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     
-    # Apply display settings
+    
     global CONTENT_WIDTH
     CONTENT_WIDTH = config['display']['content_width']
 
@@ -1940,7 +2255,7 @@ def main():
 
     if args.delete_empty or args.delete_empty_all:
         print_section_divider("🗑️ DELETE EMPTY DATABASES")
-        # Use auto-confirm and delete_all flags for automation
+        
         auto_confirm = args.auto_confirm or args.delete_empty_all
         delete_all = args.delete_empty_all
         delete_empty_databases_interactive(auto_confirm=auto_confirm, delete_all=delete_all)
@@ -1961,11 +2276,11 @@ def main():
     print_ascii_header()
 
     try:
-        check_dependencies() # Checks Turso CLI and pyperclip
+        check_dependencies() 
 
-        # (Original script's find_project_root() and check_turso_auth() can be integrated here if needed)
-        # For simplicity, assuming Turso auth is handled externally by user for now.
-        # A basic auth check:
+        
+        
+        
         print_step(2, 6, "Verifying Turso CLI authentication...")
         auth_output, auth_error, auth_code = run_command("turso auth status")
         if auth_code != 0 or "You are not logged in" in auth_output or "not authenticated" in auth_output.lower():
@@ -1977,24 +2292,24 @@ def main():
 
 
         print_step(3, 6, "Creating new Turso database...")
-        # Using retry_operation for robustness, assuming it's defined as in the original script
-        # For now, direct call:
+        
+        
         db_create_command = f"turso db create"
         if args.name:
             db_create_command += f" {args.name}"
-        create_output, create_error, create_code = run_command(db_create_command, timeout=90) # Increased timeout
+        create_output, create_error, create_code = run_command(db_create_command, timeout=90) 
         if create_code != 0:
             print_error(f"Database creation failed: {create_error or 'Unknown error'}")
             sys.exit(1)
 
-        db_name_match = re.search(r'(?:Created database|Database)\s+([\w-]+)', create_output) # More flexible regex
+        db_name_match = re.search(r'(?:Created database|Database)\s+([\w-]+)', create_output) 
         if not db_name_match:
             print_error("Could not extract database name from Turso output.")
             print_info(f"Output: {create_output}")
             sys.exit(1)
         db_name = db_name_match.group(1)
         print_success(f"Database '{Colors.CYAN}{db_name}{Colors.ENDC}' created successfully!")
-        # Save the database name to state file for potential deletion
+        
         try:
             with open(STATE_FILE, "w") as f:
                 json.dump({"last_database_name": db_name}, f)
@@ -2020,32 +2335,32 @@ def main():
         if token_code != 0:
             print_error(f"Token creation failed for {db_name}: {token_error}")
             sys.exit(1)
-        auth_token = token_output.strip() # Token is the direct output
-        if not auth_token or len(auth_token) < 10: # Basic sanity check for token
+        auth_token = token_output.strip() 
+        if not auth_token or len(auth_token) < 10: 
             print_error("Generated token appears invalid or empty.")
             print_info(f"Output: {token_output}")
             sys.exit(1)
         print_success("Authentication token generated.")
 
-        # Use custom environment variable names
+        
         url_var_name = args.env_url_name
         token_var_name = args.env_token_name
         
         new_vars = {url_var_name: DATABASE_URL, token_var_name: auth_token}
         env_vars_string_for_clipboard = f"{url_var_name}={DATABASE_URL}\n{token_var_name}={auth_token}"
 
-        # Show credentials box with masked secrets
+        
         secrets_dict = print_env_vars_box(DATABASE_URL, auth_token, db_name, url_var_name, token_var_name)
 
         print_step(6, 6, "Finalizing setup...")
         
-        # Copy to clipboard first
+        
         if not args.no_clipboard:
             try:
                 pyperclip.copy(env_vars_string_for_clipboard)
                 print_success("🔗 URL and auth token copied to clipboard!")
                 
-                # Handle auto-reveal or ask if they want to reveal the secrets
+                
                 if args.auto_reveal == 'on':
                     print(f"\n{Colors.BOLD}{Colors.OKGREEN}🔓 Secrets Revealed (auto-reveal enabled):{Colors.ENDC}")
                     print(f"{Colors.BOLD}{Colors.ORANGE}{url_var_name}: {Colors.ENDC}{Colors.BRIGHT_CYAN}{DATABASE_URL}{Colors.ENDC}")
@@ -2064,10 +2379,10 @@ def main():
                     except KeyboardInterrupt:
                         print_info("\nContinuing with masked secrets...")
                     
-            except Exception as e: # Catch broader pyperclip errors
+            except Exception as e: 
                 print_warning(f"Could not copy to clipboard: {e}")
                 print_info("You can manually copy the credentials from the box above.")
-                # Still offer to reveal secrets even if clipboard failed
+                
                 try:
                     reveal_choice = input(f"\n{Colors.BOLD}{Colors.ORANGE}Do you want to reveal the secrets? (y/N): {Colors.ENDC}").strip().lower()
                     if reveal_choice == 'y':
@@ -2078,7 +2393,7 @@ def main():
                 except KeyboardInterrupt:
                     print_info("\nContinuing...")
         else:
-            # If --no-clipboard is used, still offer to reveal secrets
+            
             try:
                 reveal_choice = input(f"\n{Colors.BOLD}{Colors.ORANGE}Do you want to reveal the secrets? (y/N): {Colors.ENDC}").strip().lower()
                 if reveal_choice == 'y':
@@ -2090,11 +2405,11 @@ def main():
                 print_info("\nContinuing...")
         
         if args.overwrite:
-            # Using a simplified version of original script's project root detection
-            project_root = Path.cwd() # Default to current directory
-            # Try to find a .git directory to define project root
+            
+            project_root = Path.cwd() 
+            
             current_dir_check = Path.cwd()
-            while current_dir_check != current_dir_check.parent: # Stop at system root
+            while current_dir_check != current_dir_check.parent: 
                 if (current_dir_check / ".git").is_dir():
                     project_root = current_dir_check
                     print_info(f"Project root identified at: {Colors.CYAN}{project_root}{Colors.ENDC}")
@@ -2103,16 +2418,15 @@ def main():
 
             env_file_path = project_root / args.overwrite
 
-            # Simplified update/append logic (original script's update_env_file is more robust)
+            
             try:
-                # Ensure directory exists
+                
                 env_file_path.parent.mkdir(parents=True, exist_ok=True)
 
                 mode = 'a' if env_file_path.exists() else 'w'
                 with open(env_file_path, mode) as f:
-                    if mode == 'a': f.write("\n\n# Turso Credentials (added by script)\n")
-                    else: f.write("# Turso Credentials (generated by script)\n")
-                    f.write(f"# Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                    if mode == 'a':
+                        f.write("\n\n")
                     f.write(f"DATABASE_URL={DATABASE_URL}\n")
                     f.write(f"TURSO_AUTH_TOKEN={auth_token}\n")
                 print_success(f"Environment variables {'appended to' if mode == 'a' else 'written to'} {Colors.CYAN}{env_file_path}{Colors.ENDC}")
@@ -2121,7 +2435,7 @@ def main():
         else:
             print_info(f"To save credentials to a file, use: {Colors.BOLD}--overwrite FILENAME{Colors.ENDC}")
 
-        # Handle database seeding if requested
+        
         if args.seed:
             seeding_success = handle_seeding(args.seed, db_name, DATABASE_URL, auth_token)
             if seeding_success:
@@ -2131,7 +2445,7 @@ def main():
 
         print_footer(db_name)
         
-        # Post-completion prompts
+        
         post_completion_prompts(db_name, DATABASE_URL, auth_token)
 
     except KeyboardInterrupt:
@@ -2139,9 +2453,9 @@ def main():
         sys.exit(1)
     except Exception as e:
         print_error(f"An unexpected error occurred: {e}")
-        # For debugging, you might want to print the full traceback
-        # import traceback
-        # print_error(f"Traceback: {traceback.format_exc()}")
+        
+        
+        
         sys.exit(1)
 
 if __name__ == "__main__":
