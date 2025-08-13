@@ -1,6 +1,5 @@
 import subprocess
 import re
-import pyperclip
 import argparse
 import os
 import sys
@@ -10,7 +9,17 @@ from datetime import datetime
 from pathlib import Path
 import math
 import threading
+import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# Optional dependency flags
+PYPERCLIP_AVAILABLE = False
+try:
+    import pyperclip  # type: ignore
+    PYPERCLIP_AVAILABLE = True
+except Exception:
+    PYPERCLIP_AVAILABLE = False
+
 try:
     from rich.console import Console
     from rich.text import Text
@@ -27,9 +36,8 @@ except ImportError:
     print("Note: Install 'rich' library for enhanced secret display features: pip install rich")
 
 
-SCRIPT_VERSION = "1.1"
-LAST_UPDATED_TIMESTAMP = "2025-07-03 16:39:47 UTC"
-
+SCRIPT_VERSION = "1.2"
+LAST_UPDATED_TIMESTAMP = "13-08-2025 12:49:30 UTC"
 
 class Colors:
     HEADER = '\033[95m'
@@ -55,6 +63,10 @@ class Colors:
 CONTENT_WIDTH = 60
 STATE_FILE = Path.home() / ".turso_gen_state.json"
 CONFIG_FILE = Path.home() / ".turso_gen_config.json"
+VENV_DIR = Path.home() / ".turso_gen_venv"
+REEXEC_ENV_FLAG = "TURSO_GEN_REEXEC"
+
+# This main function has been moved to the end of the file
 
 class SecretDisplay:
     """Class to handle secret display with asterisks and reveal functionality."""
@@ -149,6 +161,111 @@ class SecretDisplay:
         except KeyboardInterrupt:
             print_info("\nContinuing with masked secrets...")
 
+def cmd_exists(exe_name):
+    return shutil.which(exe_name) is not None
+
+def run_pip_install(packages, use_user=True):
+    cmd = [sys.executable, "-m", "pip", "install"]
+    if use_user:
+        cmd.append("--user")
+    cmd.extend(packages)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        return result.returncode == 0, result.stdout + "\n" + result.stderr
+    except Exception as e:
+        return False, str(e)
+
+def run_uv_pip_install(packages):
+    # Supports uv or uvx; prefer 'uv' if present
+    uv_bin = None
+    for cand in ["uv", "uvx"]:
+        if cmd_exists(cand):
+            uv_bin = cand
+            break
+    if not uv_bin:
+        return False, "uv/uvx not found"
+    cmd = [uv_bin, "pip", "install", "--user"]
+    cmd.extend(packages)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        return result.returncode == 0, result.stdout + "\n" + result.stderr
+    except Exception as e:
+        return False, str(e)
+
+def try_import(module_name):
+    try:
+        __import__(module_name)
+        return True
+    except Exception:
+        return False
+
+def bootstrap_dependencies(auto_confirm=False):
+    global PYPERCLIP_AVAILABLE
+    # Minimal Python version check
+    if sys.version_info < (3, 6):
+        print("Python 3.6+ is required to run this script.")
+        sys.exit(1)
+
+    # Skip all prompts in auto-confirm mode
+    if auto_confirm:
+        # Try to import pyperclip silently
+        try:
+            import pyperclip
+            PYPERCLIP_AVAILABLE = True
+        except:
+            PYPERCLIP_AVAILABLE = False
+        return
+
+    # Ensure pyperclip (required for clipboard UX, but we can continue without it)
+    if not PYPERCLIP_AVAILABLE:
+        print("\n[!] Missing Python package: pyperclip (for clipboard support)")
+        consent = None
+        try:
+            consent = input("Install 'pyperclip' now? (y/N): ").strip().lower()
+        except Exception:
+            consent = "n"
+        if consent == "y":
+            # Try pip --user first
+            ok, out = run_pip_install(["pyperclip"], use_user=True)
+            if not ok:
+                # Try uv pip as fallback if available
+                ok, out2 = run_uv_pip_install(["pyperclip"])
+                out = out + "\n" + out2
+            if ok and try_import("pyperclip"):
+                import pyperclip  # type: ignore
+                PYPERCLIP_AVAILABLE = True
+                print("[ok] Installed 'pyperclip'.")
+            else:
+                print("[!] Could not install 'pyperclip'. Clipboard features may be limited.")
+        else:
+            print("[i] Continuing without 'pyperclip'. You can still copy manually.")
+
+    # Offer to install rich (optional)
+    if not RICH_AVAILABLE:
+        try:
+            consent_rich = input("Install optional 'rich' for enhanced display? (y/N): ").strip().lower()
+        except Exception:
+            consent_rich = "n"
+        if consent_rich == "y":
+            ok, _ = run_pip_install(["rich"], use_user=True)
+            if not ok:
+                ok, _ = run_uv_pip_install(["rich"])
+            if ok and try_import("rich"):
+                try:
+                    from rich.console import Console  # noqa: F401
+                    print("[ok] Installed 'rich'.")
+                    # We won't flip RICH_AVAILABLE dynamically to avoid re-importing rich widgets everywhere
+                    # The rest of the script already gracefully degrades without rich.
+                except Exception:
+                    pass
+
+    # External CLI guidance
+    if not cmd_exists("turso"):
+        print("\n[!] Turso CLI not found in PATH.")
+        print("    Install with: curl -sSfL https://get.tur.so/install.sh | bash")
+        print("    Docs: https://docs.turso.tech/reference/turso-cli")
+
+
 def print_ascii_header():
     """Print a beautiful ASCII header with version and update info."""
     
@@ -237,7 +354,7 @@ def print_env_vars_box(DATABASE_URL, auth_token, db_name, url_var_name="DATABASE
 
     line_title = create_padded_line(f"  {Colors.BOLD}{Colors.WHITE}DATABASE CREDENTIALS", CONTENT_WIDTH)
     line_db_name = create_padded_line(f" {Colors.BOLD}{Colors.WHITE}Database Name: {Colors.CYAN}{db_name}", CONTENT_WIDTH)
-    line_created_at = create_padded_line(f" {Colors.BOLD}{Colors.WHITE}Created At:  {Colors.GRAY}{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", CONTENT_WIDTH)
+    line_created_at = create_padded_line(f" {Colors.BOLD}{Colors.WHITE}Created At:  {Colors.GRAY}{datetime.utcnow().strftime('%d-%m-%Y %H:%M:%S')} UTC", CONTENT_WIDTH)
 
     
     db_url_secret = SecretDisplay(DATABASE_URL, "database_url")
@@ -2272,26 +2389,30 @@ def main():
         configure_script()
         sys.exit(0)
 
-    os.system('clear' if os.name == 'posix' else 'cls')
-    print_ascii_header()
+    # Skip header and clear screen if auto-confirm mode
+    if not args.auto_confirm:
+        os.system('clear' if os.name == 'posix' else 'cls')
+        print_ascii_header()
 
     try:
-        check_dependencies() 
+        # Skip dependency checks in auto-confirm mode (assume they're installed)
+        if not args.auto_confirm:
+            check_dependencies()
 
         
         
         
-        print_step(2, 6, "Verifying Turso CLI authentication...")
+        if not args.auto_confirm:
+            print_step(2, 6, "Verifying Turso CLI authentication...")
         auth_output, auth_error, auth_code = run_command("turso auth status")
         if auth_code != 0 or "You are not logged in" in auth_output or "not authenticated" in auth_output.lower():
             print_error("Turso CLI authentication failed or you are not logged in.")
             print_info(f"Please run: {Colors.BOLD}turso auth login{Colors.ENDC}")
             sys.exit(1)
         whoami_output, _, _ = run_command("turso auth whoami")
-        print_success(f"Turso CLI authentication verified (Logged in as: {Colors.CYAN}{whoami_output or 'user'}{Colors.ENDC}).")
-
-
-        print_step(3, 6, "Creating new Turso database...")
+        if not args.auto_confirm:
+            print_success(f"Turso CLI authentication verified (Logged in as: {Colors.CYAN}{whoami_output or 'user'}{Colors.ENDC}).")
+            print_step(3, 6, "Creating new Turso database...")
         
         
         db_create_command = f"turso db create"
@@ -2308,7 +2429,8 @@ def main():
             print_info(f"Output: {create_output}")
             sys.exit(1)
         db_name = db_name_match.group(1)
-        print_success(f"Database '{Colors.CYAN}{db_name}{Colors.ENDC}' created successfully!")
+        if not args.auto_confirm:
+            print_success(f"Database '{Colors.CYAN}{db_name}{Colors.ENDC}' created successfully!")
         
         try:
             with open(STATE_FILE, "w") as f:
@@ -2316,7 +2438,8 @@ def main():
         except Exception as e:
             print_warning(f"Could not save state file: {e}")
 
-        print_step(4, 6, "Retrieving database connection details...")
+        if not args.auto_confirm:
+            print_step(4, 6, "Retrieving database connection details...")
         show_output, show_error, show_code = run_command(f"turso db show {db_name}", timeout=60)
         if show_code != 0:
             print_error(f"Failed to get database details for {db_name}: {show_error}")
@@ -2328,9 +2451,9 @@ def main():
             print_info(f"Output: {show_output}")
             sys.exit(1)
         DATABASE_URL = url_match.group(1)
-        print_success("Database URL retrieved.")
-
-        print_step(5, 6, "Generating authentication token...")
+        if not args.auto_confirm:
+            print_success("Database URL retrieved.")
+            print_step(5, 6, "Generating authentication token...")
         token_output, token_error, token_code = run_command(f"turso db tokens create {db_name}", timeout=60)
         if token_code != 0:
             print_error(f"Token creation failed for {db_name}: {token_error}")
@@ -2340,7 +2463,8 @@ def main():
             print_error("Generated token appears invalid or empty.")
             print_info(f"Output: {token_output}")
             sys.exit(1)
-        print_success("Authentication token generated.")
+        if not args.auto_confirm:
+            print_success("Authentication token generated.")
 
         
         url_var_name = args.env_url_name
@@ -2350,18 +2474,23 @@ def main():
         env_vars_string_for_clipboard = f"{url_var_name}={DATABASE_URL}\n{token_var_name}={auth_token}"
 
         
-        secrets_dict = print_env_vars_box(DATABASE_URL, auth_token, db_name, url_var_name, token_var_name)
-
-        print_step(6, 6, "Finalizing setup...")
+        # Skip the visual box display in auto-confirm mode
+        if not args.auto_confirm:
+            secrets_dict = print_env_vars_box(DATABASE_URL, auth_token, db_name, url_var_name, token_var_name)
+            print_step(6, 6, "Finalizing setup...")
         
         
         if not args.no_clipboard:
             try:
                 pyperclip.copy(env_vars_string_for_clipboard)
-                print_success("🔗 URL and auth token copied to clipboard!")
+                if not args.auto_confirm:
+                    print_success("🔗 URL and auth token copied to clipboard!")
                 
-                
-                if args.auto_reveal == 'on':
+                # Skip all reveal prompts in auto-confirm mode
+                if args.auto_confirm:
+                    # In auto-confirm mode, don't print anything, just exit
+                    pass
+                elif args.auto_reveal == 'on':
                     print(f"\n{Colors.BOLD}{Colors.OKGREEN}🔓 Secrets Revealed (auto-reveal enabled):{Colors.ENDC}")
                     print(f"{Colors.BOLD}{Colors.ORANGE}{url_var_name}: {Colors.ENDC}{Colors.BRIGHT_CYAN}{DATABASE_URL}{Colors.ENDC}")
                     print(f"{Colors.BOLD}{Colors.ORANGE}{token_var_name}: {Colors.ENDC}{Colors.BRIGHT_CYAN}{auth_token}{Colors.ENDC}")
@@ -2432,7 +2561,7 @@ def main():
                 print_success(f"Environment variables {'appended to' if mode == 'a' else 'written to'} {Colors.CYAN}{env_file_path}{Colors.ENDC}")
             except IOError as e:
                 print_error(f"Could not write to {env_file_path}: {e}")
-        else:
+        elif not args.auto_confirm:
             print_info(f"To save credentials to a file, use: {Colors.BOLD}--overwrite FILENAME{Colors.ENDC}")
 
         
@@ -2443,10 +2572,10 @@ def main():
             else:
                 print_warning("Database seeding completed with some issues.")
 
-        print_footer(db_name)
-        
-        
-        post_completion_prompts(db_name, DATABASE_URL, auth_token)
+        # Skip footer and prompts in auto-confirm mode
+        if not args.auto_confirm:
+            print_footer(db_name)
+            post_completion_prompts(db_name, DATABASE_URL, auth_token)
 
     except KeyboardInterrupt:
         print_error("\nOperation cancelled by user.")
@@ -2459,4 +2588,10 @@ def main():
         sys.exit(1)
 
 if __name__ == "__main__":
+    # Check if auto-confirm is in args before bootstrap
+    auto_confirm = '--auto-confirm' in sys.argv
+    try:
+        bootstrap_dependencies(auto_confirm=auto_confirm)
+    except Exception:
+        pass
     main()
