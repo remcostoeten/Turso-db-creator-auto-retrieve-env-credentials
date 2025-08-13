@@ -1,6 +1,5 @@
 import subprocess
 import re
-import pyperclip
 import argparse
 import os
 import sys
@@ -10,7 +9,17 @@ from datetime import datetime
 from pathlib import Path
 import math
 import threading
+import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# Optional dependency flags
+PYPERCLIP_AVAILABLE = False
+try:
+    import pyperclip  # type: ignore
+    PYPERCLIP_AVAILABLE = True
+except Exception:
+    PYPERCLIP_AVAILABLE = False
+
 try:
     from rich.console import Console
     from rich.text import Text
@@ -27,9 +36,8 @@ except ImportError:
     print("Note: Install 'rich' library for enhanced secret display features: pip install rich")
 
 
-SCRIPT_VERSION = "1.1"
-LAST_UPDATED_TIMESTAMP = "2025-07-03 16:39:47 UTC"
-
+SCRIPT_VERSION = "1.2"
+LAST_UPDATED_TIMESTAMP = "13-08-2025 12:49:30 UTC"
 
 class Colors:
     HEADER = '\033[95m'
@@ -55,6 +63,11 @@ class Colors:
 CONTENT_WIDTH = 60
 STATE_FILE = Path.home() / ".turso_gen_state.json"
 CONFIG_FILE = Path.home() / ".turso_gen_config.json"
+VENV_DIR = Path.home() / ".turso_gen_venv"
+REEXEC_ENV_FLAG = "TURSO_GEN_REEXEC"
+DELETION_BACKUP_DIR = Path.home() / ".turso_deletion_backups"
+
+# This main function has been moved to the end of the file
 
 class SecretDisplay:
     """Class to handle secret display with asterisks and reveal functionality."""
@@ -149,6 +162,111 @@ class SecretDisplay:
         except KeyboardInterrupt:
             print_info("\nContinuing with masked secrets...")
 
+def cmd_exists(exe_name):
+    return shutil.which(exe_name) is not None
+
+def run_pip_install(packages, use_user=True):
+    cmd = [sys.executable, "-m", "pip", "install"]
+    if use_user:
+        cmd.append("--user")
+    cmd.extend(packages)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        return result.returncode == 0, result.stdout + "\n" + result.stderr
+    except Exception as e:
+        return False, str(e)
+
+def run_uv_pip_install(packages):
+    # Supports uv or uvx; prefer 'uv' if present
+    uv_bin = None
+    for cand in ["uv", "uvx"]:
+        if cmd_exists(cand):
+            uv_bin = cand
+            break
+    if not uv_bin:
+        return False, "uv/uvx not found"
+    cmd = [uv_bin, "pip", "install", "--user"]
+    cmd.extend(packages)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        return result.returncode == 0, result.stdout + "\n" + result.stderr
+    except Exception as e:
+        return False, str(e)
+
+def try_import(module_name):
+    try:
+        __import__(module_name)
+        return True
+    except Exception:
+        return False
+
+def bootstrap_dependencies(auto_confirm=False):
+    global PYPERCLIP_AVAILABLE
+    # Minimal Python version check
+    if sys.version_info < (3, 6):
+        print("Python 3.6+ is required to run this script.")
+        sys.exit(1)
+
+    # Skip all prompts in auto-confirm mode
+    if auto_confirm:
+        # Try to import pyperclip silently
+        try:
+            import pyperclip
+            PYPERCLIP_AVAILABLE = True
+        except:
+            PYPERCLIP_AVAILABLE = False
+        return
+
+    # Ensure pyperclip (required for clipboard UX, but we can continue without it)
+    if not PYPERCLIP_AVAILABLE:
+        print("\n[!] Missing Python package: pyperclip (for clipboard support)")
+        consent = None
+        try:
+            consent = input("Install 'pyperclip' now? (y/N): ").strip().lower()
+        except Exception:
+            consent = "n"
+        if consent == "y":
+            # Try pip --user first
+            ok, out = run_pip_install(["pyperclip"], use_user=True)
+            if not ok:
+                # Try uv pip as fallback if available
+                ok, out2 = run_uv_pip_install(["pyperclip"])
+                out = out + "\n" + out2
+            if ok and try_import("pyperclip"):
+                import pyperclip  # type: ignore
+                PYPERCLIP_AVAILABLE = True
+                print("[ok] Installed 'pyperclip'.")
+            else:
+                print("[!] Could not install 'pyperclip'. Clipboard features may be limited.")
+        else:
+            print("[i] Continuing without 'pyperclip'. You can still copy manually.")
+
+    # Offer to install rich (optional)
+    if not RICH_AVAILABLE:
+        try:
+            consent_rich = input("Install optional 'rich' for enhanced display? (y/N): ").strip().lower()
+        except Exception:
+            consent_rich = "n"
+        if consent_rich == "y":
+            ok, _ = run_pip_install(["rich"], use_user=True)
+            if not ok:
+                ok, _ = run_uv_pip_install(["rich"])
+            if ok and try_import("rich"):
+                try:
+                    from rich.console import Console  # noqa: F401
+                    print("[ok] Installed 'rich'.")
+                    # We won't flip RICH_AVAILABLE dynamically to avoid re-importing rich widgets everywhere
+                    # The rest of the script already gracefully degrades without rich.
+                except Exception:
+                    pass
+
+    # External CLI guidance
+    if not cmd_exists("turso"):
+        print("\n[!] Turso CLI not found in PATH.")
+        print("    Install with: curl -sSfL https://get.tur.so/install.sh | bash")
+        print("    Docs: https://docs.turso.tech/reference/turso-cli")
+
+
 def print_ascii_header():
     """Print a beautiful ASCII header with version and update info."""
     
@@ -237,7 +355,7 @@ def print_env_vars_box(DATABASE_URL, auth_token, db_name, url_var_name="DATABASE
 
     line_title = create_padded_line(f"  {Colors.BOLD}{Colors.WHITE}DATABASE CREDENTIALS", CONTENT_WIDTH)
     line_db_name = create_padded_line(f" {Colors.BOLD}{Colors.WHITE}Database Name: {Colors.CYAN}{db_name}", CONTENT_WIDTH)
-    line_created_at = create_padded_line(f" {Colors.BOLD}{Colors.WHITE}Created At:  {Colors.GRAY}{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", CONTENT_WIDTH)
+    line_created_at = create_padded_line(f" {Colors.BOLD}{Colors.WHITE}Created At:  {Colors.GRAY}{datetime.utcnow().strftime('%d-%m-%Y %H:%M:%S')} UTC", CONTENT_WIDTH)
 
     
     db_url_secret = SecretDisplay(DATABASE_URL, "database_url")
@@ -955,9 +1073,15 @@ def check_database_exists(db_name):
     
     return False
 
-def delete_database(db_name):
-    """Deletes a Turso database."""
-    print_info(f"Attempting to delete database: {Colors.CYAN}{db_name}{Colors.ENDC}")
+def delete_database(db_name, verbose=True):
+    """Deletes a Turso database.
+    
+    Args:
+        db_name: Name of the database to delete
+        verbose: If True, print progress messages. If False, operate silently.
+    """
+    if verbose:
+        print_info(f"Attempting to delete database: {Colors.CYAN}{db_name}{Colors.ENDC}")
     command = f"turso db destroy {db_name} --yes" 
 
     output, error, code = run_command(command, timeout=60)
@@ -965,14 +1089,130 @@ def delete_database(db_name):
     
     
     if code == 0 and (f"Destroyed database {db_name}" in output or "successfully deleted" in output.lower()):
-        print_success(f"Successfully deleted database '{Colors.CYAN}{db_name}{Colors.ENDC}'")
+        if verbose:
+            print_success(f"Successfully deleted database '{Colors.CYAN}{db_name}{Colors.ENDC}'")
         return True
     else:
-        print_error(f"Failed to delete database '{Colors.CYAN}{db_name}{Colors.ENDC}'")
-        
-        if error: print_error(f"Turso CLI Error: {error}")
-        if output: print_info(f"Turso CLI Output: {output}")
+        if verbose:
+            print_error(f"Failed to delete database '{Colors.CYAN}{db_name}{Colors.ENDC}'")
+            
+            if error: print_error(f"Turso CLI Error: {error}")
+            if output: print_info(f"Turso CLI Output: {output}")
         return False
+
+def save_deletion_backup(databases_info):
+    """Save database information before deletion for recovery records.
+    
+    Args:
+        databases_info: List of database dictionaries with name, size, group, etc.
+    
+    Returns:
+        Path to the backup file or None if failed
+    """
+    try:
+        DELETION_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        backup_file = DELETION_BACKUP_DIR / f"deletion_backup_{timestamp}.json"
+        
+        backup_data = {
+            "timestamp": datetime.now().isoformat(),
+            "databases_count": len(databases_info),
+            "databases": databases_info,
+            "total_size": sum(1 for db in databases_info),  # Could calculate actual size if needed
+        }
+        
+        with open(backup_file, 'w') as f:
+            json.dump(backup_data, f, indent=2)
+        
+        return backup_file
+    except Exception as e:
+        print_warning(f"Could not save deletion backup: {e}")
+        return None
+
+def delete_databases_batch(db_names, max_workers=5, dry_run=False):
+    """Delete multiple databases in parallel with progress tracking.
+    
+    Args:
+        db_names: List of database names to delete
+        max_workers: Maximum number of parallel deletion threads
+        dry_run: If True, simulate deletion without actually deleting
+    
+    Returns:
+        Tuple of (successful_deletions, failed_deletions)
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import sys
+    
+    if not db_names:
+        return [], []
+    
+    total = len(db_names)
+    successful = []
+    failed = []
+    
+    if dry_run:
+        print_info(f"DRY RUN: Simulating deletion of {Colors.CYAN}{total}{Colors.ENDC} database(s)...")
+        print(f"{Colors.GRAY}{'─' * 60}{Colors.ENDC}")
+        for name in db_names:
+            print(f"  {Colors.YELLOW}[DRY RUN]{Colors.ENDC} Would delete: {Colors.CYAN}{name}{Colors.ENDC}")
+            successful.append(name)
+        print(f"{Colors.GRAY}{'─' * 60}{Colors.ENDC}")
+        print_info(f"DRY RUN completed. {len(successful)} database(s) would be deleted.")
+        return successful, failed
+    
+    print_info(f"Deleting {Colors.CYAN}{total}{Colors.ENDC} database(s) in parallel...")
+    print(f"{Colors.GRAY}{'─' * 60}{Colors.ENDC}")
+    
+    def delete_with_status(db_name):
+        """Delete a database and return status."""
+        command = f"turso db destroy {db_name} --yes"
+        output, error, code = run_command(command, timeout=60)
+        
+        success = code == 0 and (f"Destroyed database {db_name}" in output or "successfully deleted" in output.lower())
+        return {
+            'name': db_name,
+            'success': success,
+            'error': error if not success else None
+        }
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(delete_with_status, name): name for name in db_names}
+        
+        completed = 0
+        for future in as_completed(futures):
+            completed += 1
+            result = future.result()
+            
+            # Update progress line
+            progress = f"Progress: [{completed}/{total}]"
+            status_icon = "✅" if result['success'] else "❌"
+            db_display = f"{status_icon} {result['name'][:30]}{'...' if len(result['name']) > 30 else ''}"
+            
+            # Clear line and print progress
+            sys.stdout.write(f"\r{Colors.CYAN}{progress}{Colors.ENDC} - {db_display}" + " " * 20)
+            sys.stdout.flush()
+            
+            if result['success']:
+                successful.append(result['name'])
+            else:
+                failed.append(result['name'])
+    
+    # Clear the progress line
+    sys.stdout.write("\r" + " " * 80 + "\r")
+    sys.stdout.flush()
+    
+    # Print summary
+    print(f"{Colors.GRAY}{'─' * 60}{Colors.ENDC}")
+    if successful:
+        print_success(f"✅ Successfully deleted {len(successful)} database(s)")
+    if failed:
+        print_error(f"❌ Failed to delete {len(failed)} database(s)")
+        if len(failed) <= 5:
+            for name in failed:
+                print(f"  - {Colors.FAIL}{name}{Colors.ENDC}")
+    
+    return successful, failed
 
 def delete_last_generated_db():
     """Handler for the --delete-generation flag."""
@@ -1297,17 +1537,28 @@ def interactive_deletion():
                     confirm = input(f"\n{Colors.BOLD}{Colors.ORANGE}Type 'DELETE' to confirm deletion: {Colors.ENDC}").strip()
 
                     if confirm == 'DELETE':
+                        # Ask about dry-run
+                        dry_run_choice = input(f"{Colors.BOLD}{Colors.ORANGE}Perform dry-run first? (y/N): {Colors.ENDC}").strip().lower()
+                        
+                        db_names = [db['name'] for db in selected_dbs]
+                        
+                        if dry_run_choice == 'y':
+                            # Perform dry-run
+                            delete_databases_batch(db_names, max_workers=5, dry_run=True)
+                            proceed = input(f"\n{Colors.BOLD}{Colors.ORANGE}Proceed with actual deletion? (y/N): {Colors.ENDC}").strip().lower()
+                            if proceed != 'y':
+                                print_info("Deletion cancelled.")
+                                tty.setraw(sys.stdin.fileno())
+                                continue
+                        
+                        # Save backup before deletion
+                        backup_file = save_deletion_backup(selected_dbs)
+                        if backup_file:
+                            print_success(f"Backup saved to: {Colors.CYAN}{backup_file}{Colors.ENDC}")
+                        
                         print_info("\nProceeding with deletion...")
-                        all_successful = True
-                        for db in selected_dbs:
-                            if not delete_database(db['name']):
-                                all_successful = False
-
-                        if all_successful:
-                            print_success("\nAll selected databases have been deleted.")
-                        else:
-                            print_warning("\nSome databases could not be deleted. Check messages above.")
-
+                        successful, failed = delete_databases_batch(db_names, max_workers=5)
+                        
                         input(f"\n{Colors.BOLD}{Colors.GRAY}Press Enter to exit...{Colors.ENDC}")
                         break
                     else:
@@ -1350,28 +1601,18 @@ def delete_empty_databases_interactive(auto_confirm=False, delete_all=False):
         for db in databases:
             print(f"  - {Colors.BOLD}{db['name']}{Colors.ENDC} (Size: {db['size']})")
         
+        # Save backup even in auto-confirm mode
+        backup_file = save_deletion_backup(databases)
+        if backup_file:
+            print_success(f"Backup saved to: {Colors.CYAN}{backup_file}{Colors.ENDC}")
+        
         print_info("\nProceeding with deletion (auto-confirm mode)...")
-        success_count = 0
-        failure_count = 0
-        failed_databases = []
         
-        for db in databases:
-            if delete_database(db['name']):
-                success_count += 1
-                print_success(f"✓ Deleted: {db['name']}")
-            else:
-                failure_count += 1
-                failed_databases.append(db['name'])
-                print_error(f"✗ Failed: {db['name']}")
+        # Use batch deletion for parallel execution
+        db_names = [db['name'] for db in databases]
+        successful, failed = delete_databases_batch(db_names, max_workers=5)
         
-        
-        print(f"\n{Colors.GRAY}{'─' * 60}{Colors.ENDC}")
-        if success_count > 0 and failure_count == 0:
-            print_success(f"\n✅ Successfully deleted all {success_count} empty database(s)!")
-        elif success_count > 0 and failure_count > 0:
-            print_warning(f"\n⚠️  Partial success: {success_count} deleted, {failure_count} failed")
-        else:
-            print_error(f"\n❌ Failed to delete all {failure_count} database(s)")
+        # Results are already printed by delete_databases_batch
         return
     
     
@@ -1396,33 +1637,18 @@ def delete_empty_databases_interactive(auto_confirm=False, delete_all=False):
             confirm = input(f"\n{Colors.BOLD}{Colors.ORANGE}Type 'DELETE ALL' to confirm deletion of all {len(databases)} databases: {Colors.ENDC}").strip()
             
             if confirm == 'DELETE ALL':
+                # Save backup before bulk deletion
+                backup_file = save_deletion_backup(databases)
+                if backup_file:
+                    print_success(f"Backup saved to: {Colors.CYAN}{backup_file}{Colors.ENDC}")
+                
                 print_info("\nProceeding with bulk deletion...")
-                success_count = 0
-                failure_count = 0
-                failed_databases = []
                 
-                for db in databases:
-                    if delete_database(db['name']):
-                        success_count += 1
-                        print_success(f"✓ Deleted: {db['name']}")
-                    else:
-                        failure_count += 1
-                        failed_databases.append(db['name'])
-                        print_error(f"✗ Failed: {db['name']}")
+                # Use batch deletion for parallel execution
+                db_names = [db['name'] for db in databases]
+                successful, failed_databases = delete_databases_batch(db_names, max_workers=5)
                 
-                
-                print(f"\n{Colors.GRAY}{'─' * 60}{Colors.ENDC}")
-                if success_count > 0 and failure_count == 0:
-                    print_success(f"\n✅ Successfully deleted all {success_count} empty database(s)!")
-                elif success_count > 0 and failure_count > 0:
-                    print_warning(f"\n⚠️  Partial success: {success_count} deleted, {failure_count} failed")
-                    print_error("Failed to delete:")
-                    for db_name in failed_databases:
-                        print(f"  - {Colors.FAIL}{db_name}{Colors.ENDC}")
-                else:
-                    print_error(f"\n❌ Failed to delete all {failure_count} database(s)")
-                
-                print(f"{Colors.GRAY}{'─' * 60}{Colors.ENDC}")
+                # Results are already printed by delete_databases_batch
                 input(f"\n{Colors.BOLD}{Colors.GRAY}Press Enter to exit...{Colors.ENDC}")
                 return
             else:
@@ -1592,34 +1818,28 @@ def delete_empty_databases_interactive(auto_confirm=False, delete_all=False):
                     confirm = input(f"\n{Colors.BOLD}{Colors.ORANGE}Type 'DELETE' to confirm deletion: {Colors.ENDC}").strip()
                     
                     if confirm == 'DELETE':
+                        # Ask about dry-run for empty databases too
+                        dry_run_choice = input(f"{Colors.BOLD}{Colors.ORANGE}Perform dry-run first? (y/N): {Colors.ENDC}").strip().lower()
+                        
+                        db_names = [db['name'] for db in selected_dbs]
+                        
+                        if dry_run_choice == 'y':
+                            # Perform dry-run
+                            delete_databases_batch(db_names, max_workers=5, dry_run=True)
+                            proceed = input(f"\n{Colors.BOLD}{Colors.ORANGE}Proceed with actual deletion? (y/N): {Colors.ENDC}").strip().lower()
+                            if proceed != 'y':
+                                print_info("Deletion cancelled.")
+                                tty.setraw(sys.stdin.fileno())
+                                continue
+                        
+                        # Save backup before deletion
+                        backup_file = save_deletion_backup(selected_dbs)
+                        if backup_file:
+                            print_success(f"Backup saved to: {Colors.CYAN}{backup_file}{Colors.ENDC}")
+                        
                         print_info("\nProceeding with deletion...")
-                        success_count = 0
-                        failure_count = 0
-                        failed_databases = []
+                        successful, failed_databases = delete_databases_batch(db_names, max_workers=5)
                         
-                        for db in selected_dbs:
-                            if delete_database(db['name']):
-                                success_count += 1
-                            else:
-                                failure_count += 1
-                                failed_databases.append(db['name'])
-                        
-                        
-                        print(f"\n{Colors.GRAY}{'─' * 60}{Colors.ENDC}")
-                        if success_count > 0 and failure_count == 0:
-                            print_success(f"\n✅ Successfully deleted all {success_count} empty database(s)!")
-                        elif success_count > 0 and failure_count > 0:
-                            print_warning(f"\n⚠️  Partial success: {success_count} deleted, {failure_count} failed")
-                            print_error("Failed to delete:")
-                            for db_name in failed_databases:
-                                print(f"  - {Colors.FAIL}{db_name}{Colors.ENDC}")
-                        else:
-                            print_error(f"\n❌ Failed to delete all {failure_count} database(s)")
-                            print_error("Failed databases:")
-                            for db_name in failed_databases:
-                                print(f"  - {Colors.FAIL}{db_name}{Colors.ENDC}")
-                        
-                        print(f"{Colors.GRAY}{'─' * 60}{Colors.ENDC}")
                         input(f"\n{Colors.BOLD}{Colors.GRAY}Press Enter to exit...{Colors.ENDC}")
                         break
                     else:
@@ -1854,6 +2074,8 @@ def interactive_main_menu():
             elif choice == '3':
                 
                 os.system('clear' if os.name == 'posix' else 'cls')
+                # Show backup directory info
+                print_info(f"Deletion backups are saved to: {Colors.CYAN}{DELETION_BACKUP_DIR}{Colors.ENDC}")
                 delete_empty_databases_interactive(auto_confirm=False, delete_all=False)
                 
             elif choice == '4':
@@ -2196,6 +2418,8 @@ def main():
                               help='Delete ALL empty databases without confirmation (CI/automation mode).')
     delete_group.add_argument('--delete-interactive', action='store_true',
                               help='Interactive menu to select and delete any databases.')
+    delete_group.add_argument('--dry-run', action='store_true',
+                              help='Simulate deletion operations without actually deleting (works with other delete flags).')
     delete_group.add_argument('--auto-confirm', action='store_true',
                               help='Skip all confirmation prompts (use with caution, for CI/automation).')
 
@@ -2256,6 +2480,18 @@ def main():
     if args.delete_empty or args.delete_empty_all:
         print_section_divider("🗑️ DELETE EMPTY DATABASES")
         
+        # Check for dry-run mode
+        if args.dry_run:
+            print_info("Running in DRY-RUN mode - no databases will be deleted")
+            databases = find_empty_databases()
+            if databases:
+                print_info(f"Would delete {len(databases)} empty database(s):")
+                for db in databases:
+                    print(f"  {Colors.YELLOW}[DRY RUN]{Colors.ENDC} {db['name']} (Size: {db['size']})")
+            else:
+                print_info("No empty databases found.")
+            sys.exit(0)
+        
         auto_confirm = args.auto_confirm or args.delete_empty_all
         delete_all = args.delete_empty_all
         delete_empty_databases_interactive(auto_confirm=auto_confirm, delete_all=delete_all)
@@ -2263,6 +2499,8 @@ def main():
 
     if args.delete_interactive:
         print_section_divider("🗑️  INTERACTIVE DATABASE DELETION")
+        if args.dry_run:
+            print_info("DRY-RUN mode enabled - deletions will be simulated")
         interactive_deletion()
         sys.exit(0)
 
@@ -2272,26 +2510,30 @@ def main():
         configure_script()
         sys.exit(0)
 
-    os.system('clear' if os.name == 'posix' else 'cls')
-    print_ascii_header()
+    # Skip header and clear screen if auto-confirm mode
+    if not args.auto_confirm:
+        os.system('clear' if os.name == 'posix' else 'cls')
+        print_ascii_header()
 
     try:
-        check_dependencies() 
+        # Skip dependency checks in auto-confirm mode (assume they're installed)
+        if not args.auto_confirm:
+            check_dependencies()
 
         
         
         
-        print_step(2, 6, "Verifying Turso CLI authentication...")
+        if not args.auto_confirm:
+            print_step(2, 6, "Verifying Turso CLI authentication...")
         auth_output, auth_error, auth_code = run_command("turso auth status")
         if auth_code != 0 or "You are not logged in" in auth_output or "not authenticated" in auth_output.lower():
             print_error("Turso CLI authentication failed or you are not logged in.")
             print_info(f"Please run: {Colors.BOLD}turso auth login{Colors.ENDC}")
             sys.exit(1)
         whoami_output, _, _ = run_command("turso auth whoami")
-        print_success(f"Turso CLI authentication verified (Logged in as: {Colors.CYAN}{whoami_output or 'user'}{Colors.ENDC}).")
-
-
-        print_step(3, 6, "Creating new Turso database...")
+        if not args.auto_confirm:
+            print_success(f"Turso CLI authentication verified (Logged in as: {Colors.CYAN}{whoami_output or 'user'}{Colors.ENDC}).")
+            print_step(3, 6, "Creating new Turso database...")
         
         
         db_create_command = f"turso db create"
@@ -2308,7 +2550,8 @@ def main():
             print_info(f"Output: {create_output}")
             sys.exit(1)
         db_name = db_name_match.group(1)
-        print_success(f"Database '{Colors.CYAN}{db_name}{Colors.ENDC}' created successfully!")
+        if not args.auto_confirm:
+            print_success(f"Database '{Colors.CYAN}{db_name}{Colors.ENDC}' created successfully!")
         
         try:
             with open(STATE_FILE, "w") as f:
@@ -2316,7 +2559,8 @@ def main():
         except Exception as e:
             print_warning(f"Could not save state file: {e}")
 
-        print_step(4, 6, "Retrieving database connection details...")
+        if not args.auto_confirm:
+            print_step(4, 6, "Retrieving database connection details...")
         show_output, show_error, show_code = run_command(f"turso db show {db_name}", timeout=60)
         if show_code != 0:
             print_error(f"Failed to get database details for {db_name}: {show_error}")
@@ -2328,9 +2572,9 @@ def main():
             print_info(f"Output: {show_output}")
             sys.exit(1)
         DATABASE_URL = url_match.group(1)
-        print_success("Database URL retrieved.")
-
-        print_step(5, 6, "Generating authentication token...")
+        if not args.auto_confirm:
+            print_success("Database URL retrieved.")
+            print_step(5, 6, "Generating authentication token...")
         token_output, token_error, token_code = run_command(f"turso db tokens create {db_name}", timeout=60)
         if token_code != 0:
             print_error(f"Token creation failed for {db_name}: {token_error}")
@@ -2340,7 +2584,8 @@ def main():
             print_error("Generated token appears invalid or empty.")
             print_info(f"Output: {token_output}")
             sys.exit(1)
-        print_success("Authentication token generated.")
+        if not args.auto_confirm:
+            print_success("Authentication token generated.")
 
         
         url_var_name = args.env_url_name
@@ -2350,18 +2595,24 @@ def main():
         env_vars_string_for_clipboard = f"{url_var_name}={DATABASE_URL}\n{token_var_name}={auth_token}"
 
         
-        secrets_dict = print_env_vars_box(DATABASE_URL, auth_token, db_name, url_var_name, token_var_name)
-
-        print_step(6, 6, "Finalizing setup...")
+        # Skip the visual box display in auto-confirm mode
+        if not args.auto_confirm:
+            secrets_dict = print_env_vars_box(DATABASE_URL, auth_token, db_name, url_var_name, token_var_name)
+            print_step(6, 6, "Finalizing setup...")
         
         
         if not args.no_clipboard:
             try:
                 pyperclip.copy(env_vars_string_for_clipboard)
-                print_success("🔗 URL and auth token copied to clipboard!")
+                if not args.auto_confirm:
+                    print_success("🔗 URL and auth token copied to clipboard!")
                 
-                
-                if args.auto_reveal == 'on':
+                # Skip all reveal prompts in auto-confirm mode
+                if args.auto_confirm:
+                    # In auto-confirm mode, only print final success message
+                    print("✅ Credentials copied to clipboard successfully")
+                    # Don't exit yet - need to check for --overwrite flag
+                elif args.auto_reveal == 'on':
                     print(f"\n{Colors.BOLD}{Colors.OKGREEN}🔓 Secrets Revealed (auto-reveal enabled):{Colors.ENDC}")
                     print(f"{Colors.BOLD}{Colors.ORANGE}{url_var_name}: {Colors.ENDC}{Colors.BRIGHT_CYAN}{DATABASE_URL}{Colors.ENDC}")
                     print(f"{Colors.BOLD}{Colors.ORANGE}{token_var_name}: {Colors.ENDC}{Colors.BRIGHT_CYAN}{auth_token}{Colors.ENDC}")
@@ -2379,9 +2630,15 @@ def main():
                     except KeyboardInterrupt:
                         print_info("\nContinuing with masked secrets...")
                     
-            except Exception as e: 
-                print_warning(f"Could not copy to clipboard: {e}")
-                print_info("You can manually copy the credentials from the box above.")
+            except Exception as e:
+                if args.auto_confirm:
+                    print(f"⚠️ Warning: Could not copy to clipboard - {e}")
+                    # Don't exit on clipboard error if we have --overwrite
+                    if not args.overwrite:
+                        sys.exit(1)  # Only exit if no --overwrite provided
+                else:
+                    print_warning(f"Could not copy to clipboard: {e}")
+                    print_info("You can manually copy the credentials from the box above.")
                 
                 try:
                     reveal_choice = input(f"\n{Colors.BOLD}{Colors.ORANGE}Do you want to reveal the secrets? (y/N): {Colors.ENDC}").strip().lower()
@@ -2412,7 +2669,8 @@ def main():
             while current_dir_check != current_dir_check.parent: 
                 if (current_dir_check / ".git").is_dir():
                     project_root = current_dir_check
-                    print_info(f"Project root identified at: {Colors.CYAN}{project_root}{Colors.ENDC}")
+                    if not args.auto_confirm:  # Only print in non-auto mode
+                        print_info(f"Project root identified at: {Colors.CYAN}{project_root}{Colors.ENDC}")
                     break
                 current_dir_check = current_dir_check.parent
 
@@ -2429,11 +2687,22 @@ def main():
                         f.write("\n\n")
                     f.write(f"DATABASE_URL={DATABASE_URL}\n")
                     f.write(f"TURSO_AUTH_TOKEN={auth_token}\n")
-                print_success(f"Environment variables {'appended to' if mode == 'a' else 'written to'} {Colors.CYAN}{env_file_path}{Colors.ENDC}")
+                if args.auto_confirm:
+                    print(f"✅ Environment variables {'appended to' if mode == 'a' else 'written to'} {env_file_path}")
+                else:
+                    print_success(f"Environment variables {'appended to' if mode == 'a' else 'written to'} {Colors.CYAN}{env_file_path}{Colors.ENDC}")
             except IOError as e:
-                print_error(f"Could not write to {env_file_path}: {e}")
-        else:
+                if args.auto_confirm:
+                    print(f"❌ Error: Could not write to {env_file_path}: {e}")
+                    sys.exit(1)
+                else:
+                    print_error(f"Could not write to {env_file_path}: {e}")
+        elif not args.auto_confirm:
             print_info(f"To save credentials to a file, use: {Colors.BOLD}--overwrite FILENAME{Colors.ENDC}")
+        
+        # Exit here if auto-confirm mode (after handling --overwrite)
+        if args.auto_confirm:
+            sys.exit(0)
 
         
         if args.seed:
@@ -2443,10 +2712,10 @@ def main():
             else:
                 print_warning("Database seeding completed with some issues.")
 
-        print_footer(db_name)
-        
-        
-        post_completion_prompts(db_name, DATABASE_URL, auth_token)
+        # Skip footer and prompts in auto-confirm mode
+        if not args.auto_confirm:
+            print_footer(db_name)
+            post_completion_prompts(db_name, DATABASE_URL, auth_token)
 
     except KeyboardInterrupt:
         print_error("\nOperation cancelled by user.")
@@ -2459,4 +2728,10 @@ def main():
         sys.exit(1)
 
 if __name__ == "__main__":
+    # Check if auto-confirm is in args before bootstrap
+    auto_confirm = '--auto-confirm' in sys.argv
+    try:
+        bootstrap_dependencies(auto_confirm=auto_confirm)
+    except Exception:
+        pass
     main()
