@@ -2228,10 +2228,49 @@ def create_database_interactive(seed_mode=None):
         
         
         print_step(3, 6, "Creating new Turso database...")
+        
+        # Get available groups and let user select
+        groups_output, groups_error, groups_code = run_command("turso group list")
+        if groups_code != 0:
+            print_warning("Could not fetch database groups. Using default group.")
+            selected_group = "default"
+        else:
+            # Parse available groups
+            available_groups = []
+            for line in groups_output.split('\n'):
+                if line.strip() and not line.startswith('NAME'):
+                    group_name = line.split()[0]
+                    if group_name:  # Make sure it's not empty
+                        available_groups.append(group_name)
+            
+            if len(available_groups) > 1:
+                print_info(f"Available database groups:")
+                for i, group in enumerate(available_groups, 1):
+                    print(f"  {i}. {Colors.CYAN}{group}{Colors.ENDC}")
+                
+                while True:
+                    try:
+                        group_choice = input(f"{Colors.BOLD}{Colors.ORANGE}Select group (1-{len(available_groups)}) or press Enter for default: {Colors.ENDC}").strip()
+                        if not group_choice:
+                            selected_group = "default"
+                            break
+                        group_idx = int(group_choice) - 1
+                        if 0 <= group_idx < len(available_groups):
+                            selected_group = available_groups[group_idx]
+                            break
+                        else:
+                            print_warning(f"Please enter a number between 1 and {len(available_groups)}.")
+                    except ValueError:
+                        print_warning("Please enter a valid number.")
+            else:
+                selected_group = available_groups[0] if available_groups else "default"
+        
         db_create_command = f"turso db create"
         if db_name_input:
             db_create_command += f" {db_name_input}"
+        db_create_command += f" --group {selected_group}"
         
+        print_info(f"Creating database in group: {Colors.CYAN}{selected_group}{Colors.ENDC}")
         create_output, create_error, create_code = run_command(db_create_command, timeout=90)
         if create_code != 0:
             print_error(f"Database creation failed: {create_error or 'Unknown error'}")
@@ -2393,6 +2432,8 @@ def main():
     
     parser.add_argument('--name', metavar='DB_NAME',
                        help='Custom name for the database. If not provided, Turso will generate a random name.')
+    parser.add_argument('--group', metavar='GROUP',
+                       help='Turso group name where the database should be created.')
     parser.add_argument('--overwrite', metavar='FILENAME',
                        help='Filename (e.g., .env or .env.production) to update/create in project root.')
     parser.add_argument('--no-clipboard', action='store_true',
@@ -2536,10 +2577,32 @@ def main():
             print_step(3, 6, "Creating new Turso database...")
         
         
+        # Automatically select a group if none is specified
+        if not args.group:
+            groups_output, groups_error, groups_code = run_command("turso group list")
+            if groups_code == 0:
+                # Parse available groups and use the first one (typically 'default')
+                for line in groups_output.split('\n'):
+                    if line.strip() and not line.startswith('NAME'):
+                        group_name = line.split()[0]
+                        if group_name:
+                            args.group = group_name
+                            if not args.auto_confirm:
+                                print_info(f"Auto-selected group: {Colors.CYAN}{args.group}{Colors.ENDC}")
+                            break
+            
+            # Fallback to 'default' if we couldn't parse groups
+            if not args.group:
+                args.group = "default"
+                if not args.auto_confirm:
+                    print_info(f"Using fallback group: {Colors.CYAN}{args.group}{Colors.ENDC}")
+        
         db_create_command = f"turso db create"
         if args.name:
             db_create_command += f" {args.name}"
-        create_output, create_error, create_code = run_command(db_create_command, timeout=90) 
+        db_create_command += f" --group {args.group}"
+        
+        create_output, create_error, create_code = run_command(db_create_command, timeout=90)
         if create_code != 0:
             print_error(f"Database creation failed: {create_error or 'Unknown error'}")
             sys.exit(1)
